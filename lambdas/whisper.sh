@@ -11,5 +11,6 @@ pacat -r --latency-msec=1 \
       - \
       -t raw \
       - \
-      bandpass 2500 1500 \
+      bandpass 2.5k 1.5k \
+      vol 24dB 0.05 \
   | pacat -p --latency-msec=1
