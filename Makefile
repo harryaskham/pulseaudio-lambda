@@ -1,28 +1,49 @@
 CC = gcc
 CFLAGS = -g -O2 -Wall -fPIC -std=c99
-PA_CFLAGS = $(shell pkg-config --cflags libpulse)
-PA_LIBS = $(shell pkg-config --libs libpulse)
 
-# Need to include pulsecore (not distributed in many distros, but available in Nix)
-PA_CFLAGS += -I/usr/include/pulse -I/usr/local/include/pulse
-PA_CFLAGS += $(shell pkg-config --cflags libpulse-mainloop-glib 2>/dev/null || echo "")
+# Use PA_CFLAGS if available (from Nix build), otherwise use pkg-config
+ifndef PA_CFLAGS
+	PA_CFLAGS = $(shell pkg-config --cflags libpulse)
+	PA_LIBS = $(shell pkg-config --libs libpulse)
+	# For standalone client build
+	PA_SIMPLE_LIBS = $(shell pkg-config --libs libpulse-simple)
+else
+	PA_LIBS = $(shell pkg-config --libs libpulse)
+endif
 
+# Build both module and standalone client
 MODULE = module-lambda.so
-SOURCES = src/module-lambda.c
-OBJECTS = $(SOURCES:.c=.o)
+CLIENT = pulseaudio-lambda
+
+MODULE_SOURCES = src/module-lambda.c
+CLIENT_SOURCES = src/pulseaudio-lambda.c
+
+MODULE_OBJECTS = $(MODULE_SOURCES:.c=.o)
+CLIENT_OBJECTS = $(CLIENT_SOURCES:.c=.client.o)
 
 .PHONY: all clean install test help
 
-all: $(MODULE)
+all: $(CLIENT)
 
-$(MODULE): $(OBJECTS)
-	$(CC) -shared -o $@ $(OBJECTS) $(PA_LIBS)
+# Default target is standalone client for now
+$(CLIENT): $(CLIENT_OBJECTS)
+	$(CC) -o $@ $(CLIENT_OBJECTS) $(PA_LIBS) $(PA_SIMPLE_LIBS)
 
+# Module target (requires pulsecore headers)
+module: $(MODULE)
+
+$(MODULE): $(MODULE_OBJECTS)
+	$(CC) -shared -o $@ $(MODULE_OBJECTS) $(PA_LIBS)
+
+# Pattern rules
 %.o: %.c
 	$(CC) $(CFLAGS) $(PA_CFLAGS) -c -o $@ $<
 
+%.client.o: %.c
+	$(CC) $(CFLAGS) $(shell pkg-config --cflags libpulse libpulse-simple) -c -o $@ $<
+
 clean:
-	rm -f $(MODULE) $(OBJECTS)
+	rm -f $(CLIENT) $(MODULE) $(CLIENT_OBJECTS) $(MODULE_OBJECTS)
 	rm -f compile_commands.json
 
 install: $(MODULE)

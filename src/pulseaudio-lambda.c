@@ -1,0 +1,297 @@
+/***
+  PulseAudio Lambda Bridge
+  
+  This program creates a bridge that captures audio from a PulseAudio source,
+  pipes it through an external process (lambda) via stdin/stdout, and plays
+  the result to a PulseAudio sink.
+***/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <errno.h>
+#include <fcntl.h>
+
+#include <pulse/pulseaudio.h>
+#include <pulse/simple.h>
+
+#define SAMPLE_RATE 44100
+#define CHANNELS 2
+#define BUFFER_SIZE 1024
+
+typedef struct {
+    char *source_name;
+    char *sink_name;
+    char *lambda_command;
+    
+    pa_simple *source_conn;
+    pa_simple *sink_conn;
+    
+    pid_t lambda_pid;
+    int pipe_to_lambda[2];
+    int pipe_from_lambda[2];
+    
+    int running;
+} lambda_bridge_t;
+
+static lambda_bridge_t bridge = {0};
+
+static void cleanup(void) {
+    printf("Cleaning up...\n");
+    
+    bridge.running = 0;
+    
+    if (bridge.source_conn) {
+        pa_simple_free(bridge.source_conn);
+        bridge.source_conn = NULL;
+    }
+    
+    if (bridge.sink_conn) {
+        pa_simple_free(bridge.sink_conn);
+        bridge.sink_conn = NULL;
+    }
+    
+    if (bridge.lambda_pid > 0) {
+        kill(bridge.lambda_pid, SIGTERM);
+        waitpid(bridge.lambda_pid, NULL, 0);
+        bridge.lambda_pid = 0;
+    }
+    
+    if (bridge.pipe_to_lambda[0] >= 0) close(bridge.pipe_to_lambda[0]);
+    if (bridge.pipe_to_lambda[1] >= 0) close(bridge.pipe_to_lambda[1]);
+    if (bridge.pipe_from_lambda[0] >= 0) close(bridge.pipe_from_lambda[0]);
+    if (bridge.pipe_from_lambda[1] >= 0) close(bridge.pipe_from_lambda[1]);
+}
+
+static void signal_handler(int sig) {
+    printf("Received signal %d, shutting down\n", sig);
+    cleanup();
+    exit(0);
+}
+
+static int spawn_lambda(void) {
+    if (pipe(bridge.pipe_to_lambda) < 0) {
+        fprintf(stderr, "Failed to create pipe to lambda: %s\n", strerror(errno));
+        return -1;
+    }
+    
+    if (pipe(bridge.pipe_from_lambda) < 0) {
+        fprintf(stderr, "Failed to create pipe from lambda: %s\n", strerror(errno));
+        return -1;
+    }
+    
+    bridge.lambda_pid = fork();
+    
+    if (bridge.lambda_pid < 0) {
+        fprintf(stderr, "Failed to fork lambda process: %s\n", strerror(errno));
+        return -1;
+    }
+    
+    if (bridge.lambda_pid == 0) {
+        // Child process - setup lambda
+        close(bridge.pipe_to_lambda[1]);
+        close(bridge.pipe_from_lambda[0]);
+        
+        if (dup2(bridge.pipe_to_lambda[0], STDIN_FILENO) < 0) {
+            perror("dup2 stdin");
+            _exit(1);
+        }
+        
+        if (dup2(bridge.pipe_from_lambda[1], STDOUT_FILENO) < 0) {
+            perror("dup2 stdout");
+            _exit(1);
+        }
+        
+        close(bridge.pipe_to_lambda[0]);
+        close(bridge.pipe_from_lambda[1]);
+        
+        execl("/bin/sh", "sh", "-c", bridge.lambda_command, NULL);
+        perror("execl");
+        _exit(1);
+    }
+    
+    // Parent process
+    close(bridge.pipe_to_lambda[0]);
+    close(bridge.pipe_from_lambda[1]);
+    
+    printf("Lambda process spawned with PID %d\n", bridge.lambda_pid);
+    return 0;
+}
+
+static int init_pulseaudio(void) {
+    pa_sample_spec sample_spec = {
+        .format = PA_SAMPLE_S16LE,
+        .rate = SAMPLE_RATE,
+        .channels = CHANNELS
+    };
+    
+    pa_buffer_attr buffer_attr = {
+        .maxlength = (uint32_t) -1,
+        .tlength = BUFFER_SIZE * sizeof(int16_t) * CHANNELS,
+        .prebuf = (uint32_t) -1,
+        .minreq = (uint32_t) -1,
+        .fragsize = BUFFER_SIZE * sizeof(int16_t) * CHANNELS
+    };
+    
+    int error;
+    
+    // Connect to source (for recording)
+    bridge.source_conn = pa_simple_new(
+        NULL,                    // server
+        "pulseaudio-lambda",     // application name
+        PA_STREAM_RECORD,        // direction
+        bridge.source_name,      // device name
+        "Lambda Input",          // stream description
+        &sample_spec,           // sample format
+        NULL,                   // channel map
+        &buffer_attr,           // buffering attributes
+        &error
+    );
+    
+    if (!bridge.source_conn) {
+        fprintf(stderr, "Failed to connect to source '%s': %s\n", 
+                bridge.source_name ? bridge.source_name : "default",
+                pa_strerror(error));
+        return -1;
+    }
+    
+    // Connect to sink (for playback)
+    bridge.sink_conn = pa_simple_new(
+        NULL,                    // server
+        "pulseaudio-lambda",     // application name  
+        PA_STREAM_PLAYBACK,      // direction
+        bridge.sink_name,        // device name
+        "Lambda Output",         // stream description
+        &sample_spec,           // sample format
+        NULL,                   // channel map
+        &buffer_attr,           // buffering attributes
+        &error
+    );
+    
+    if (!bridge.sink_conn) {
+        fprintf(stderr, "Failed to connect to sink '%s': %s\n",
+                bridge.sink_name ? bridge.sink_name : "default", 
+                pa_strerror(error));
+        return -1;
+    }
+    
+    printf("Connected to PulseAudio:\n");
+    printf("  Source: %s\n", bridge.source_name ? bridge.source_name : "default");
+    printf("  Sink: %s\n", bridge.sink_name ? bridge.sink_name : "default");
+    
+    return 0;
+}
+
+static void run_bridge(void) {
+    uint8_t buffer[BUFFER_SIZE * sizeof(int16_t) * CHANNELS];
+    int error;
+    
+    bridge.running = 1;
+    printf("Bridge running - press Ctrl+C to stop\n");
+    
+    while (bridge.running) {
+        // Read from PulseAudio source
+        if (pa_simple_read(bridge.source_conn, buffer, sizeof(buffer), &error) < 0) {
+            fprintf(stderr, "Failed to read from source: %s\n", pa_strerror(error));
+            break;
+        }
+        
+        // Send to lambda process
+        ssize_t written = write(bridge.pipe_to_lambda[1], buffer, sizeof(buffer));
+        if (written != sizeof(buffer)) {
+            if (written < 0) {
+                perror("Failed to write to lambda");
+            } else {
+                fprintf(stderr, "Partial write to lambda: %zd/%zu bytes\n", written, sizeof(buffer));
+            }
+            break;
+        }
+        
+        // Read from lambda process
+        ssize_t bytes_read = read(bridge.pipe_from_lambda[0], buffer, sizeof(buffer));
+        if (bytes_read != sizeof(buffer)) {
+            if (bytes_read < 0) {
+                perror("Failed to read from lambda");
+            } else if (bytes_read == 0) {
+                printf("Lambda process ended\n");
+            } else {
+                fprintf(stderr, "Partial read from lambda: %zd/%zu bytes\n", bytes_read, sizeof(buffer));
+            }
+            break;
+        }
+        
+        // Write to PulseAudio sink
+        if (pa_simple_write(bridge.sink_conn, buffer, bytes_read, &error) < 0) {
+            fprintf(stderr, "Failed to write to sink: %s\n", pa_strerror(error));
+            break;
+        }
+    }
+}
+
+static void print_usage(const char *prog) {
+    printf("Usage: %s [options] <lambda_command>\n", prog);
+    printf("Options:\n");
+    printf("  -s, --source=NAME    PulseAudio source name\n");
+    printf("  -o, --sink=NAME      PulseAudio sink name  \n");
+    printf("  -h, --help           Show this help\n");
+    printf("\nExample:\n");
+    printf("  %s -s alsa_input.pci-0000_00_1f.3.analog-stereo \\\n", prog);
+    printf("         -o alsa_output.pci-0000_00_1f.3.analog-stereo \\\n");
+    printf("         './lambdas/identity.sh'\n");
+    printf("\n");
+    printf("  # Or use default devices:\n");
+    printf("  %s './lambdas/identity.sh'\n", prog);
+}
+
+int main(int argc, char *argv[]) {
+    // Initialize pipe file descriptors
+    bridge.pipe_to_lambda[0] = bridge.pipe_to_lambda[1] = -1;
+    bridge.pipe_from_lambda[0] = bridge.pipe_from_lambda[1] = -1;
+    
+    // Parse command line arguments
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else if (strncmp(argv[i], "-s=", 3) == 0 || strncmp(argv[i], "--source=", 9) == 0) {
+            bridge.source_name = strchr(argv[i], '=') + 1;
+        } else if (strncmp(argv[i], "-o=", 3) == 0 || strncmp(argv[i], "--sink=", 7) == 0) {
+            bridge.sink_name = strchr(argv[i], '=') + 1;
+        } else if (argv[i][0] != '-') {
+            bridge.lambda_command = argv[i];
+            break;
+        }
+    }
+    
+    if (!bridge.lambda_command) {
+        fprintf(stderr, "Error: Lambda command is required\n");
+        print_usage(argv[0]);
+        return 1;
+    }
+    
+    // Setup signal handlers
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+    atexit(cleanup);
+    
+    printf("PulseAudio Lambda Bridge\n");
+    printf("Lambda: %s\n", bridge.lambda_command);
+    
+    // Initialize components
+    if (spawn_lambda() < 0) {
+        return 1;
+    }
+    
+    if (init_pulseaudio() < 0) {
+        return 1;
+    }
+    
+    // Run the bridge
+    run_bridge();
+    
+    return 0;
+}

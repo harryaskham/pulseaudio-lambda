@@ -28,16 +28,22 @@
           ];
           
           buildPhase = ''
+            ls -la
+            ls -la src/
             make
           '';
           
           installPhase = ''
-            mkdir -p $out/lib/pulse/modules
-            cp module-lambda.so $out/lib/pulse/modules/
+            runHook preInstall
+            
+            mkdir -p $out/bin
+            cp pulseaudio-lambda $out/bin/
             
             mkdir -p $out/share/pulseaudio-lambda/lambdas
             cp -r lambdas/* $out/share/pulseaudio-lambda/lambdas/
             chmod +x $out/share/pulseaudio-lambda/lambdas/*
+            
+            runHook postInstall
           '';
         };
       in {
