@@ -6,6 +6,8 @@
   the result to a PulseAudio sink.
 ***/
 
+#define _POSIX_C_SOURCE 200112L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,18 +17,24 @@
 #include <signal.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdlib.h>
 
 #include <pulse/pulseaudio.h>
 #include <pulse/simple.h>
 
-#define SAMPLE_RATE 44100
-#define CHANNELS 2
-#define BUFFER_SIZE 1024
+#define DEFAULT_SAMPLE_RATE 44100
+#define DEFAULT_CHANNELS 2
+#define DEFAULT_BUFFER_SIZE 1024
 
 typedef struct {
     char *source_name;
     char *sink_name;
     char *lambda_command;
+    
+    // Audio format parameters
+    uint32_t sample_rate;
+    uint8_t channels;
+    uint32_t buffer_size;
     
     pa_simple *source_conn;
     pa_simple *sink_conn;
@@ -109,6 +117,30 @@ static int spawn_lambda(void) {
         close(bridge.pipe_to_lambda[0]);
         close(bridge.pipe_from_lambda[1]);
         
+        // Set up environment variables for lambda
+        char sample_rate_str[32];
+        char channels_str[32]; 
+        char buffer_size_str[32];
+        char bytes_per_sample_str[32];
+        char bytes_per_frame_str[32];
+        char bits_str[32];
+        
+        snprintf(sample_rate_str, sizeof(sample_rate_str), "%u", bridge.sample_rate);
+        snprintf(channels_str, sizeof(channels_str), "%u", bridge.channels);
+        snprintf(buffer_size_str, sizeof(buffer_size_str), "%u", bridge.buffer_size);
+        snprintf(bytes_per_sample_str, sizeof(bytes_per_sample_str), "2"); // S16LE = 2 bytes
+        snprintf(bytes_per_frame_str, sizeof(bytes_per_frame_str), "%u", bridge.channels * 2);
+        snprintf(bits_str, sizeof(bits_str), "16"); // S16LE = 16 bits
+        
+        setenv("PA_LAMBDA_SAMPLE_RATE", sample_rate_str, 1);
+        setenv("PA_LAMBDA_CHANNELS", channels_str, 1);
+        setenv("PA_LAMBDA_BUFFER_SIZE", buffer_size_str, 1);
+        setenv("PA_LAMBDA_SAMPLE_FORMAT", "s16le", 1);
+        setenv("PA_LAMBDA_BYTES_PER_SAMPLE", bytes_per_sample_str, 1);
+        setenv("PA_LAMBDA_BYTES_PER_FRAME", bytes_per_frame_str, 1);
+        setenv("PA_LAMBDA_SIGNED", "signed", 1);
+        setenv("PA_LAMBDA_BITS", bits_str, 1);
+        
         execl("/bin/sh", "sh", "-c", bridge.lambda_command, NULL);
         perror("execl");
         _exit(1);
@@ -125,16 +157,16 @@ static int spawn_lambda(void) {
 static int init_pulseaudio(void) {
     pa_sample_spec sample_spec = {
         .format = PA_SAMPLE_S16LE,
-        .rate = SAMPLE_RATE,
-        .channels = CHANNELS
+        .rate = bridge.sample_rate,
+        .channels = bridge.channels
     };
     
     pa_buffer_attr buffer_attr = {
         .maxlength = (uint32_t) -1,
-        .tlength = BUFFER_SIZE * sizeof(int16_t) * CHANNELS,
+        .tlength = bridge.buffer_size * sizeof(int16_t) * bridge.channels,
         .prebuf = (uint32_t) -1,
         .minreq = (uint32_t) -1,
-        .fragsize = BUFFER_SIZE * sizeof(int16_t) * CHANNELS
+        .fragsize = bridge.buffer_size * sizeof(int16_t) * bridge.channels
     };
     
     int error;
@@ -187,7 +219,12 @@ static int init_pulseaudio(void) {
 }
 
 static void run_bridge(void) {
-    uint8_t buffer[BUFFER_SIZE * sizeof(int16_t) * CHANNELS];
+    size_t buffer_bytes = bridge.buffer_size * sizeof(int16_t) * bridge.channels;
+    uint8_t *buffer = malloc(buffer_bytes);
+    if (!buffer) {
+        fprintf(stderr, "Failed to allocate audio buffer\n");
+        return;
+    }
     int error;
     
     bridge.running = 1;
@@ -195,31 +232,31 @@ static void run_bridge(void) {
     
     while (bridge.running) {
         // Read from PulseAudio source
-        if (pa_simple_read(bridge.source_conn, buffer, sizeof(buffer), &error) < 0) {
+        if (pa_simple_read(bridge.source_conn, buffer, buffer_bytes, &error) < 0) {
             fprintf(stderr, "Failed to read from source: %s\n", pa_strerror(error));
             break;
         }
         
         // Send to lambda process
-        ssize_t written = write(bridge.pipe_to_lambda[1], buffer, sizeof(buffer));
-        if (written != sizeof(buffer)) {
+        ssize_t written = write(bridge.pipe_to_lambda[1], buffer, buffer_bytes);
+        if (written != (ssize_t)buffer_bytes) {
             if (written < 0) {
                 perror("Failed to write to lambda");
             } else {
-                fprintf(stderr, "Partial write to lambda: %zd/%zu bytes\n", written, sizeof(buffer));
+                fprintf(stderr, "Partial write to lambda: %zd/%zu bytes\n", written, buffer_bytes);
             }
             break;
         }
         
         // Read from lambda process
-        ssize_t bytes_read = read(bridge.pipe_from_lambda[0], buffer, sizeof(buffer));
-        if (bytes_read != sizeof(buffer)) {
+        ssize_t bytes_read = read(bridge.pipe_from_lambda[0], buffer, buffer_bytes);
+        if (bytes_read != (ssize_t)buffer_bytes) {
             if (bytes_read < 0) {
                 perror("Failed to read from lambda");
             } else if (bytes_read == 0) {
                 printf("Lambda process ended\n");
             } else {
-                fprintf(stderr, "Partial read from lambda: %zd/%zu bytes\n", bytes_read, sizeof(buffer));
+                fprintf(stderr, "Partial read from lambda: %zd/%zu bytes\n", bytes_read, buffer_bytes);
             }
             break;
         }
@@ -230,6 +267,8 @@ static void run_bridge(void) {
             break;
         }
     }
+    
+    free(buffer);
 }
 
 static void print_usage(const char *prog) {
@@ -251,6 +290,11 @@ int main(int argc, char *argv[]) {
     // Initialize pipe file descriptors
     bridge.pipe_to_lambda[0] = bridge.pipe_to_lambda[1] = -1;
     bridge.pipe_from_lambda[0] = bridge.pipe_from_lambda[1] = -1;
+    
+    // Initialize audio format parameters
+    bridge.sample_rate = DEFAULT_SAMPLE_RATE;
+    bridge.channels = DEFAULT_CHANNELS;
+    bridge.buffer_size = DEFAULT_BUFFER_SIZE;
     
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
@@ -280,6 +324,8 @@ int main(int argc, char *argv[]) {
     
     printf("PulseAudio Lambda Bridge\n");
     printf("Lambda: %s\n", bridge.lambda_command);
+    printf("Audio Format: %s, %uHz, %u channels, %u samples buffer\n",
+           "S16LE", bridge.sample_rate, bridge.channels, bridge.buffer_size);
     
     // Initialize components
     if (spawn_lambda() < 0) {
