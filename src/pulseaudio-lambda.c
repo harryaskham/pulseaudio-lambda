@@ -7,6 +7,7 @@
 ***/
 
 #define _POSIX_C_SOURCE 200112L
+#define _DEFAULT_SOURCE  // For usleep on some systems
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -150,6 +151,14 @@ static int spawn_lambda(void) {
     close(bridge.pipe_to_lambda[0]);
     close(bridge.pipe_from_lambda[1]);
     
+    // Make pipes non-blocking
+    int flags;
+    flags = fcntl(bridge.pipe_to_lambda[1], F_GETFL);
+    fcntl(bridge.pipe_to_lambda[1], F_SETFL, flags | O_NONBLOCK);
+    
+    flags = fcntl(bridge.pipe_from_lambda[0], F_GETFL);
+    fcntl(bridge.pipe_from_lambda[0], F_SETFL, flags | O_NONBLOCK);
+    
     printf("Lambda process spawned with PID %d\n", bridge.lambda_pid);
     return 0;
 }
@@ -229,6 +238,7 @@ static void run_bridge(void) {
     
     bridge.running = 1;
     printf("Bridge running - press Ctrl+C to stop\n");
+    printf("Buffer size: %zu bytes per cycle\n", buffer_bytes);
     
     while (bridge.running) {
         // Read from PulseAudio source
@@ -237,34 +247,52 @@ static void run_bridge(void) {
             break;
         }
         
-        // Send to lambda process
-        ssize_t written = write(bridge.pipe_to_lambda[1], buffer, buffer_bytes);
-        if (written != (ssize_t)buffer_bytes) {
+        // Send to lambda process (non-blocking)
+        ssize_t written = 0;
+        size_t total_written = 0;
+        while (total_written < buffer_bytes) {
+            written = write(bridge.pipe_to_lambda[1], buffer + total_written, buffer_bytes - total_written);
             if (written < 0) {
-                perror("Failed to write to lambda");
-            } else {
-                fprintf(stderr, "Partial write to lambda: %zd/%zu bytes\n", written, buffer_bytes);
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    usleep(100); // Brief pause before retrying
+                    continue;
+                } else {
+                    perror("Failed to write to lambda");
+                    break;
+                }
             }
+            total_written += written;
+        }
+        
+        if (total_written != buffer_bytes) {
+            fprintf(stderr, "Failed to write complete buffer to lambda\n");
             break;
         }
         
-        // Read from lambda process
+        // Try to read from lambda process (non-blocking)
+        // Note: We may not get data immediately if lambda is buffering
         ssize_t bytes_read = read(bridge.pipe_from_lambda[0], buffer, buffer_bytes);
-        if (bytes_read != (ssize_t)buffer_bytes) {
-            if (bytes_read < 0) {
-                perror("Failed to read from lambda");
-            } else if (bytes_read == 0) {
-                printf("Lambda process ended\n");
+        
+        if (bytes_read < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // No data available yet - this is normal for buffering lambdas
+                // Skip this iteration and continue
+                continue;
             } else {
-                fprintf(stderr, "Partial read from lambda: %zd/%zu bytes\n", bytes_read, buffer_bytes);
+                perror("Failed to read from lambda");
+                break;
             }
+        } else if (bytes_read == 0) {
+            printf("Lambda process ended\n");
             break;
         }
         
-        // Write to PulseAudio sink
-        if (pa_simple_write(bridge.sink_conn, buffer, bytes_read, &error) < 0) {
-            fprintf(stderr, "Failed to write to sink: %s\n", pa_strerror(error));
-            break;
+        // Write to PulseAudio sink (only if we got data)
+        if (bytes_read > 0) {
+            if (pa_simple_write(bridge.sink_conn, buffer, bytes_read, &error) < 0) {
+                fprintf(stderr, "Failed to write to sink: %s\n", pa_strerror(error));
+                break;
+            }
         }
     }
     
