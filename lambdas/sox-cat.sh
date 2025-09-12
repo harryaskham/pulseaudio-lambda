@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 
+# Passes audio through sox unchanged
 source ./lambdas/lib.sh
-pal-sox reverb 100 100 100 pitch 3
+pal-sox
