@@ -1,6 +1,9 @@
 .direnv/
 pulseaudio-lambda
 result
-ml/musdb18hq.zip
 ml/data/
 ml/__pycache__/
+ml/wandb/
+ml/experiments/
+ml/eval-results/
+ml/checkpoints/

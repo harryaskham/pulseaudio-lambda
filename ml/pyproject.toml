@@ -16,6 +16,8 @@ dependencies = [
     "numba>=0.57.0",
     "llvmlite>=0.40.0",
     "HS-TasNet>=0.2.29",
+    "fire",
+    "wandb",
 ]
 
 [[tool.uv.index]]
