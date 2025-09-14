@@ -5,6 +5,7 @@ Reads audio from stdin, processes in chunks, applies volume controls, and output
 Compatible with PulseAudio Lambda bridge.
 """
 
+import datetime
 import io
 import csv
 import sys
@@ -41,7 +42,7 @@ def parse_arguments():
     parser.add_argument('--chunk-secs', type=float, default=2.0,
                         help='Chunk size in seconds (default: 2.0)')
     
-    # Volume controls for each stem (in dB where 0 is unchanged, -x and x for increasing or decreasing or 'mute')
+    # Volume controls for each stem or m to mute
     parser.add_argument('--stem-gain', type=str, default="0,0,0,0",
                         help='Stem gain change for drums,bass,vocals,other (default: 0,0,0,0)')
 
@@ -243,6 +244,7 @@ def main():
     inference_thread = threading.Thread(target=audio_inference_thread, args=(input_queue, output_queue, checkpoint, sample_spec, device, gains))
     output_thread = threading.Thread(target=audio_output_thread, args=(output_queue, sample_spec))
 
+    time.sleep(datetime.datetime.now().microsecond / 1_000_000)  # Align to next second boundary
     input_thread.start()
     inference_thread.start()
     output_thread.start()

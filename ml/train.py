@@ -6,13 +6,13 @@ import torch
 import logging
 
 def train(
-    experiment_name = 'full1',
+    experiment_name,
     small = False,
     stereo = True,
     cpu = False,
     batch_size = 32,
-    max_steps = 50_000,
-    max_epochs = 100,
+    max_steps = 100_000,
+    max_epochs = 1000,
     max_audio_length_seconds = 10,
     use_wandb = True,
     wandb_project = 'HS-TasNet',
@@ -20,7 +20,7 @@ def train(
     musdb18hq_root = "./data/musdb18hq",
     split_dataset_for_eval = False,
     split_dataset_eval_frac = 0.05,
-    checkpoint_every = 10,
+    checkpoint_every = 25,
 ):
     wandb_run_name = experiment_name
     checkpoint_folder = f"./experiments/{experiment_name}/checkpoints"
