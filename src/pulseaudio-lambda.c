@@ -159,7 +159,7 @@ static int spawn_lambda(void) {
     flags = fcntl(bridge.pipe_from_lambda[0], F_GETFL);
     fcntl(bridge.pipe_from_lambda[0], F_SETFL, flags | O_NONBLOCK);
     
-    printf("Lambda process spawned with PID %d\n", bridge.lambda_pid);
+    printf("Lambda process spawned:\nPID=%d\n", bridge.lambda_pid);
     return 0;
 }
 

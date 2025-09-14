@@ -264,7 +264,7 @@ static int spawn_lambda(struct userdata *u) {
     pa_make_fd_nonblock(u->pipe_to_lambda);
     pa_make_fd_nonblock(u->pipe_from_lambda);
     
-    pa_log_info("Lambda process spawned with PID %d", u->lambda_pid);
+    pa_log_info("Lambda process spawned:\nPID=%d", u->lambda_pid);
     
     return 0;
 }

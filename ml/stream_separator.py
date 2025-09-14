@@ -31,7 +31,12 @@ logging.basicConfig(
 def parse_arguments():
     """Parse command line arguments for volume controls and chunk size."""
     parser = argparse.ArgumentParser(description='Real-time audio stem separation')
-    
+
+    # Checkpoint
+    parser.add_argument('--checkpoint', type=str,
+                        default="./experiments/full0/checkpoints/hs-tasnet.ckpt.10.pt",
+                        help='Chunk size in seconds (default: 2.0)')
+
     # Chunk size in seconds
     parser.add_argument('--chunk-secs', type=float, default=2.0,
                         help='Chunk size in seconds (default: 2.0)')
@@ -55,12 +60,12 @@ def queue_audio_chunk(audio_tensor, channels, bits, audio_queue):
         audio_tensor = audio_tensor.cpu()
     
     ## Remove batch dimension if present
-    #if audio_tensor.ndim == 3:
-    #    audio_tensor = audio_tensor[0]
-    #
-    ## Ensure we have the right number of channels
-    #if audio_tensor.shape[0] != channels:
-    #    raise ValueError(f"Wrong number of channels in output: {audio_tensor.shape[0]}")
+    if audio_tensor.ndim == 3:
+        audio_tensor = audio_tensor[0]
+
+   # Ensure we have the right number of channels
+    if audio_tensor.shape[0] != channels:
+        raise ValueError(f"Wrong number of channels in output: {audio_tensor.shape[0]}")
 
     # Ensure audio is properly bounded and convert to correct format
     audio_clamped = torch.clamp(audio_tensor, -1.0, 1.0)
@@ -114,7 +119,7 @@ def audio_input_thread(input_queue, sample_spec, chunk_secs):
         logging.error(f"Processing error: {e}")
         sys.exit(1)
 
-def audio_inference_thread(input_queue, output_queue, sample_spec, device, gains):
+def audio_inference_thread(input_queue, output_queue, checkpoint, sample_spec, device, gains):
     # Set up device
     device = torch.device(device)
     logging.info(f"Using device: {device}")
@@ -122,7 +127,8 @@ def audio_inference_thread(input_queue, output_queue, sample_spec, device, gains
     # Load model
     logging.info("Loading HS-TasNet model...")
     model = BufferHSTasNet(sample_spec).to(device)
-    logging.info("Model loaded successfully")
+    model.load(checkpoint)
+    logging.info(f"Checkpoint {checkpoint} loaded successfully")
 
     while True:
         # Get next tensor from queue (timeout to handle shutdown)
@@ -167,7 +173,9 @@ def audio_output_thread(output_queue, sample_spec):
 
 def apply_gain(tensor, gain_db):
     """Apply volume scaling to audio tensor using torchaudio."""
-    return torchaudio.functional.gain(tensor, gain_db)
+    # TODO: move back to percent naming
+    return tensor * (gain_db / 100.0)
+    #return torchaudio.functional.gain(tensor, gain_db)
 
 def log_stem_range(stems, names, label):
     for name, stem in zip(names, stems):
@@ -203,10 +211,10 @@ def process_audio_tensor(model, audio_tensor, gains):
 
     # Normalize mixed audio to prevent clipping artifacts
     # Find peak and scale if needed
-    peak = torch.max(torch.abs(mixed))
-    if peak > 1.0:
-        mixed = mixed / peak
-        logging.debug(f"Normalized mixed audio by factor {peak:.3f}")
+    # peak = torch.max(torch.abs(mixed))
+    # if peak > 1.0:
+    #     mixed = mixed / peak
+    #     logging.debug(f"Normalized mixed audio by factor {peak:.3f}")
     
     logging.debug(f"Mixed peak level: {torch.max(torch.abs(mixed)):.3f}")
     
@@ -219,11 +227,12 @@ def main():
     args = parse_arguments()
     logging.debug(f"Arguments: chunk_secs={args.chunk_secs}, stem_gain={args.stem_gain}, device={args.device}")
 
+    checkpoint = args.checkpoint
     sample_spec = SampleSpec.from_env()
     device = args.device
     gains = [
-        -100.0 if x.strip() == "x" else float(x.strip())
-        for x in  args.stem_gain.split(",")]
+        0.0 if x.strip() == "m" else float(x.strip())
+        for x in args.stem_gain.split(",")]
     assert len(gains) == 4
 
     # Set up audio output queue and thread
@@ -231,7 +240,7 @@ def main():
     output_queue = queue.Queue(maxsize=100)
 
     input_thread = threading.Thread(target=audio_input_thread, args=(input_queue, sample_spec, int(args.chunk_secs)))
-    inference_thread = threading.Thread(target=audio_inference_thread, args=(input_queue, output_queue, sample_spec, device, gains))
+    inference_thread = threading.Thread(target=audio_inference_thread, args=(input_queue, output_queue, checkpoint, sample_spec, device, gains))
     output_thread = threading.Thread(target=audio_output_thread, args=(output_queue, sample_spec))
 
     input_thread.start()

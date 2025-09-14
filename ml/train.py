@@ -6,6 +6,7 @@ import torch
 import logging
 
 def train(
+    experiment_name = 'full1',
     small = False,
     stereo = True,
     cpu = False,
@@ -15,15 +16,15 @@ def train(
     max_audio_length_seconds = 10,
     use_wandb = True,
     wandb_project = 'HS-TasNet',
-    wandb_run_name = None,
     clear_folders = False,
     musdb18hq_root = "./data/musdb18hq",
     split_dataset_for_eval = False,
     split_dataset_eval_frac = 0.05,
-    checkpoint_folder = './checkpoints',
     checkpoint_every = 10,
-    eval_results_folder = './eval-results',
 ):
+    wandb_run_name = experiment_name
+    checkpoint_folder = f"./experiments/{experiment_name}/checkpoints"
+    eval_results_folder = f"./experiments/{experiment_name}/eval-results"
 
     model = HSTasNet(
         small = small,
