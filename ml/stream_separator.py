@@ -234,9 +234,8 @@ def process_chunk(model, audio_tensor, args, device):
     other = apply_volume(other, args.other_volume)
     
     # Mix stems back together with proper audio mixing (sum and normalize)
-    #mixed = drums + bass + vocals + other
-    mixed = other
-    
+    mixed = drums + bass + vocals + other
+
     # Normalize mixed audio to prevent clipping artifacts
     # Find peak and scale if needed
     peak = torch.max(torch.abs(mixed))
@@ -270,7 +269,8 @@ def main():
     
     # Load model
     logging.info("Loading HS-TasNet model...")
-    model = HSTasNet().to(device)
+    # TODO: Tweak parameters
+    model = HSTasNet(sample_rate=sample_rate).to(device)
     logging.info("Model loaded successfully")
     
     # Use binary stdin/stdout for real-time processing
