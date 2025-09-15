@@ -43,8 +43,8 @@ class Args:
 
         # Config JSON file
         # Overridden temporarily by any provided command line args
-        parser.add_argument('--config-dir', type=str, default=os.path.expanduser("~/.config/pulseaudio-lambda"),
-                            help='Path to config dir')
+        # Defaults to the env variable $PA_LAMBDA_CONFIG_DIR or ~/.config/pulseaudio-lambda if not set
+        parser.add_argument('--config-dir', type=str, help='Path to config dir')
 
         # Checkpoint
         parser.add_argument('--save-config', action='store_true',
@@ -69,8 +69,14 @@ class Args:
         args = parser.parse_args()
         logging.debug(f"CLI args: {args}")
 
-        pathlib.Path(args.config_dir).mkdir(parents=True, exist_ok=True)
-        config_json_path = os.path.join(args.config_dir, "stream_separator_config.json")
+        # Defaults to the env variable $PA_LAMBDA_CONFIG_DIR or ~/.config/pulseaudio-lambda if not set
+        config_dir = (
+            args.config_dir if args.config_dir is not None
+            else os.environ.get('PA_LAMBDA_CONFIG_DIR',
+                                os.path.expanduser("~/.config/pulseaudio-lambda")))
+        logging.debug(f"Using config dir: {config_dir}")
+        pathlib.Path(config_dir).mkdir(parents=True, exist_ok=True)
+        config_json_path = os.path.join(config_dir, "stream_separator_config.json")
         config_args = {}
         if os.path.exists(config_json_path):
             with open(config_json_path, 'r') as f:
@@ -82,10 +88,16 @@ class Args:
               for x in args.gains.split(",") ]
             if args.gains is not None
             else config_args.gains)
+        checkpoint = (
+            os.path.expandvars(
+                os.path.expanduser(
+                    args.checkpoint
+                    if args.checkpoint is not None
+                    else config_args.checkpoint)))
 
         combined = cls(
             gains=gains,
-            checkpoint=args.checkpoint if args.checkpoint is not None else config_args.checkpoint,
+            checkpoint=checkpoint,
             chunk_secs=args.chunk_secs if args.chunk_secs is not None else config_args.chunk_secs,
             device=args.device if args.device is not None else config_args.device
         )

@@ -1,0 +1,11 @@
+{
+    "checkpoint": "$PA_LAMBDA_DIR/ml/blessed/over30s.5.ckpt",
+    "chunk_secs": 30.0,
+    "gains": [
+        100.0,
+        0.0,
+        0.0,
+        0.0
+    ],
+    "device": "cpu"
+}
