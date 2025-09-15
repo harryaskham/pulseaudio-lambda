@@ -19,6 +19,7 @@ dependencies = [
     "fire",
     "wandb",
     "termplotlib",
+    "watchdog",
 ]
 
 [[tool.uv.index]]
