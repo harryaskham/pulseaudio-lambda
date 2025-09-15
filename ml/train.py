@@ -1,8 +1,6 @@
 from hs_tasnet import HSTasNet, Trainer, MusDB18HQ
-import os
 import fire
 import sys
-import torch
 import logging
 
 def train(
