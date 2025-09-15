@@ -191,8 +191,7 @@ def audio_inference_thread(input_queue, output_queue, checkpoint, sample_spec, d
     logging.info(f"Checkpoint {checkpoint} loaded successfully")
 
     while True:
-        # Get next tensor from queue (timeout to handle shutdown)
-        audio_tensor = input_queue.get(timeout=1.0)
+        audio_tensor = input_queue.get()
 
         logging.debug("Starting model processing...")
         processed = process_audio_tensor(model, audio_tensor, gains)
@@ -212,8 +211,7 @@ def audio_output_thread(output_queue, sample_spec):
     try:
         while True:
             try:
-                # Get next buffer from queue (timeout to handle shutdown)
-                chunk_data = output_queue.get(timeout=1.0)
+                chunk_data = output_queue.get()
                 
                 # Write to stdout
                 sys.stdout.buffer.write(chunk_data)

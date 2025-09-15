@@ -102,7 +102,7 @@ class BufferHSTasNet(HSTasNet):
         auto_convert_to_stereo = True,
         overwrite = False
     ):
-        logging.error(f"Processing audio of shape {audio_tensor.shape}")
+        logging.debug(f"Processing audio of shape {audio_tensor.shape}")
 
         # curtail to divisible segment lens
 

@@ -1,6 +1,6 @@
 #/usr/bin/env bash
 
-checkpoint="./experiments/full1/checkpoints/hs-tasnet.ckpt.4.pt"
+checkpoint="${PA_LAMBDA_CHECKPOINT:-$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.36.pt}"
 
 mode="$1"
 case "$mode" in
@@ -12,6 +12,9 @@ case "$mode" in
     m="100"
     s="m"
   ;;
+  *)
+    echo "Usage: $0 {solo|mute}"
+    exit 1
 esac
 
 gains=()
@@ -23,9 +26,8 @@ gains+=("$m,$m,$m,$s")
 pa_source="vsink.monitor"
 pa_sink="bluez_output.A0_0C_E2_45_D8_C5.1"
 #pa_sink="alsa_output.pci-0000_c5_00.6.analog-stereo"
-#device="cpu"
-device="cuda"
-chunk_secs="10"
+device="${PA_LAMBDA_CHUNK_DEVICE:-cpu}"
+chunk_secs="${PA_LAMBDA_CHUNK_SECS:-30}"
 export HIP_VISIBLE_DEVICES=1
 
 function mk-lambda-cmd() {
@@ -33,7 +35,7 @@ function mk-lambda-cmd() {
   cat << EOF
 python stream_separator.py \
   --chunk-secs "$chunk_secs" \
-  --stem-gain "$gain" \
+  --gains "$gain" \
   --checkpoint="$checkpoint" \
   --device="$device"
 EOF
@@ -62,7 +64,7 @@ function ctrl_c() {
   for pid in $pids; do
     kill -9 $pid
   done
-  pgrep -f "python stream_separator.py" | xargs -I{} kill -9 {}
+  pkill -f "python stream_separator.py"
   exit 0
 }
 
