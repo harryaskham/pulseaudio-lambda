@@ -1,7 +1,26 @@
 from hs_tasnet import HSTasNet, Trainer, MusDB18HQ
+import torchaudio
 import fire
 import sys
 import logging
+
+class MaxMusDB18HQ(MusDB18HQ):
+    """Set the max length to the shortest audio."""
+    def __init__(
+        self,
+        dataset_path,
+        sep_filenames = ('drums', 'bass', 'vocals', 'other'),
+        max_audio_length_seconds = None,
+    ):
+        if max_audio_length_seconds is not None:
+            super().__init__(dataset_path, sep_filenames=sep_filenames, max_audio_length_seconds=max_audio_length_seconds)
+        else:
+            def len_secs(i):
+                audio, sample_rate = torchaudio.load(f"{self.paths[i]}/mixture.wav")
+                return audio.shape[-1] // sample_rate
+            super().__init__(dataset_path, sep_filenames=sep_filenames)
+            self.max_audio_length_seconds = min(len_secs(i) for i in range(0, len(self)))
+            logging.info(f"Max audio length set to shortest audio: {self.max_audio_length_seconds} seconds.")
 
 def train(
     experiment_name,
@@ -11,14 +30,17 @@ def train(
     batch_size = 32,
     max_steps = 100_000,
     max_epochs = 10000,
-    max_audio_length_seconds = 12,
+    max_audio_length_seconds = None,
+    use_ema = False,
     use_wandb = True,
     wandb_project = 'HS-TasNet',
-    clear_folders = False,
     musdb18hq_root = "./data/musdb18hq",
-    split_dataset_for_eval = False,
-    split_dataset_eval_frac = 0.05,
+    split_dataset_for_eval = True,
+    split_dataset_eval_frac = 0.01,
     checkpoint_every = 25,
+    eval_sdr = False,
+    decay_lr_if_not_improved_steps = 10,
+    early_stop_if_not_improved_steps = 20,
 ):
     wandb_run_name = experiment_name
     checkpoint_folder = f"./experiments/{experiment_name}/checkpoints"
@@ -29,7 +51,7 @@ def train(
         stereo = stereo
     )
 
-    dataset = MusDB18HQ(musdb18hq_root, max_audio_length_seconds=max_audio_length_seconds)
+    dataset = MaxMusDB18HQ(musdb18hq_root, max_audio_length_seconds=max_audio_length_seconds)
 
     trainer = Trainer(
         model,
@@ -46,10 +68,9 @@ def train(
         checkpoint_every = checkpoint_every,
         eval_results_folder = eval_results_folder,
         cpu = cpu,
+        use_ema = use_ema,
+        eval_sdr = eval_sdr
     )
-
-    if clear_folders:
-        trainer.clear_folders()
 
     trainer()
 
