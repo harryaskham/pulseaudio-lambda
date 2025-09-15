@@ -1,6 +1,6 @@
 #/usr/bin/env bash
 
-checkpoint="./experiments/full0/checkpoints/hs_tasnet.ema.ckpt.10.pt"
+checkpoint="./experiments/full1/checkpoints/hs-tasnet.ckpt.4.pt"
 
 mode="$1"
 case "$mode" in
