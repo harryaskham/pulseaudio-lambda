@@ -18,6 +18,7 @@ dependencies = [
     "HS-TasNet>=0.2.29",
     "fire",
     "wandb",
+    "termplotlib",
 ]
 
 [[tool.uv.index]]

@@ -5,15 +5,15 @@ Reads audio from stdin, processes in chunks, applies volume controls, and output
 Compatible with PulseAudio Lambda bridge.
 """
 
+from typing import List
+import dataclasses
 import datetime
-import io
-import csv
+import pathlib
+import json
 import sys
 import os
 import argparse
-import numpy as np
 import torch
-import torchaudio
 import struct
 import logging
 import time
@@ -29,28 +29,75 @@ logging.basicConfig(
     stream=sys.stderr
 )
 
-def parse_arguments():
-    """Parse command line arguments for volume controls and chunk size."""
-    parser = argparse.ArgumentParser(description='Real-time audio stem separation')
+@dataclasses.dataclass
+class Args:
+    checkpoint: str
+    chunk_secs: float
+    gains: List[str]
+    device: str
 
-    # Checkpoint
-    parser.add_argument('--checkpoint', type=str,
-                        default="./experiments/full0/checkpoints/hs-tasnet.ckpt.10.pt",
-                        help='Chunk size in seconds (default: 2.0)')
+    @classmethod
+    def combined(cls):
+        """Parse command line arguments for volume controls and chunk size."""
+        parser = argparse.ArgumentParser(description='Real-time audio stem separation')
 
-    # Chunk size in seconds
-    parser.add_argument('--chunk-secs', type=float, default=2.0,
-                        help='Chunk size in seconds (default: 2.0)')
-    
-    # Volume controls for each stem or m to mute
-    parser.add_argument('--stem-gain', type=str, default="0,0,0,0",
-                        help='Stem gain change for drums,bass,vocals,other (default: 0,0,0,0)')
+        # Config JSON file
+        # Overridden temporarily by any provided command line args
+        parser.add_argument('--config-dir', type=str, default=os.path.expanduser("~/.config/pulseaudio-lambda"),
+                            help='Path to config dir')
 
-    # Device selection
-    parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu',
-                        help='Device to use (cuda/cpu)')
-    
-    return parser.parse_args()
+        # Checkpoint
+        parser.add_argument('--save-config', action='store_true',
+                            help='If set, persist the current settings combination')
+
+        # Checkpoint
+        parser.add_argument('--checkpoint', type=str,
+                            help='Path to model checkpoint')
+
+        # Chunk size in seconds
+        parser.add_argument('--chunk-secs', type=float,
+                            help='Chunk size in seconds')
+
+        # Volume controls for each stem or m to mute
+        parser.add_argument('--gains', type=str,
+                            help='Stem gain change for drums,bass,vocals,other (e.g. 50,m,100,m to mute bass and other, with half volume drums and full volume vocals)')
+
+        # Device selection
+        parser.add_argument('--device', type=str,
+                            help='Device to use (cuda/cpu)')
+
+        args = parser.parse_args()
+        logging.debug(f"CLI args: {args}")
+
+        pathlib.Path(args.config_dir).mkdir(parents=True, exist_ok=True)
+        config_json_path = os.path.join(args.config_dir, "stream_separator_config.json")
+        config_args = {}
+        if os.path.exists(config_json_path):
+            with open(config_json_path, 'r') as f:
+                config_args = Args(**(json.load(f)))
+        logging.debug(f"Loaded config args: {config_args}")
+
+        gains = (
+            [ 0.0 if x.strip() == "m" else float(x.strip())
+              for x in args.gains.split(",") ]
+            if args.gains is not None
+            else config_args.gains)
+
+        combined = cls(
+            gains=gains,
+            checkpoint=args.checkpoint if args.checkpoint is not None else config_args.checkpoint,
+            chunk_secs=args.chunk_secs if args.chunk_secs is not None else config_args.chunk_secs,
+            device=args.device if args.device is not None else config_args.device
+        )
+        logging.debug(f"Combined config/CLI args: {combined}")
+
+        if args.save_config:
+            with open(config_json_path, 'w') as f:
+                json.dump(dataclasses.asdict(combined), f, indent=4)
+            logging.info(f"Saved config to {config_json_path}")
+
+        return combined
+
 
 def queue_audio_chunk(audio_tensor, channels, bits, audio_queue):
     """Convert processed audio tensor to bytes and queue for output."""
@@ -225,23 +272,18 @@ def process_audio_tensor(model, audio_tensor, gains):
 
 def main():
     """Main processing loop."""
-    args = parse_arguments()
-    logging.debug(f"Arguments: chunk_secs={args.chunk_secs}, stem_gain={args.stem_gain}, device={args.device}")
+    args = Args.combined()
 
     checkpoint = args.checkpoint
     sample_spec = SampleSpec.from_env()
     device = args.device
-    gains = [
-        0.0 if x.strip() == "m" else float(x.strip())
-        for x in args.stem_gain.split(",")]
-    assert len(gains) == 4
 
     # Set up audio output queue and thread
     input_queue = queue.Queue(maxsize=100)
     output_queue = queue.Queue(maxsize=100)
 
     input_thread = threading.Thread(target=audio_input_thread, args=(input_queue, sample_spec, int(args.chunk_secs)))
-    inference_thread = threading.Thread(target=audio_inference_thread, args=(input_queue, output_queue, checkpoint, sample_spec, device, gains))
+    inference_thread = threading.Thread(target=audio_inference_thread, args=(input_queue, output_queue, checkpoint, sample_spec, args.device, args.gains))
     output_thread = threading.Thread(target=audio_output_thread, args=(output_queue, sample_spec))
 
     time.sleep(datetime.datetime.now().microsecond / 1_000_000)  # Align to next second boundary
