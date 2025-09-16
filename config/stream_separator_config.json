@@ -1,25 +1,25 @@
 {
     "gains": [
-        100.0,
-        100.0,
-        100.0,
-        100.0
+        200.0,
+        148.34437086092714,
+        144.37086092715234,
+        159.73509933774835
     ],
     "muted": [
         false,
         false,
-        false,
+        true,
         false
     ],
     "soloed": [
         false,
+        true,
         false,
-        false,
-        false
+        true
     ],
     "normalize": false,
-    "device": "cuda",
-    "chunk_secs": 2.0104011887072804,
+    "device": "cpu",
+    "chunk_secs": 1.2942938659058487,
     "overlap_secs": 0.22288261515601784,
     "checkpoint": "$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.50.pt",
     "watch": true

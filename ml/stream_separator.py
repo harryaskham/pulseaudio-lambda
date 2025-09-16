@@ -19,193 +19,8 @@ import logging
 import time
 import threading
 import queue
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-
+from stream_separator_args import Args, expand_path
 from buffer_hs_tasnet import BufferHSTasNet, SampleSpec
-
-_args = None  # Global to hold parsed args
-_args_lock = threading.Lock()
-
-def expand_path(path):
-    return os.path.expandvars(os.path.expanduser(path))
-
-def refresh_args():
-    global _args
-    with _args_lock:
-        try:
-            _args = Args.combined(first_load=False, silent=True)
-            logging.debug("Refreshed args")
-        except Exception as e:
-            logging.error(f"Error refreshing args: {e}")
-        return _args
-
-class ArgsEventHandler(FileSystemEventHandler):
-    def refresh(self, event):
-        args = get_args()
-        if event.src_path == expand_path(args.config_path):
-            args = refresh_args()
-            logging.info("Reloaded config after change: %s", args)
-
-    def on_modified(self, event):
-        super().on_modified(event)
-        self.refresh(event)
-
-    def on_moved(self, event):
-        super().on_moved(event)
-        self.refresh(event)
-
-def get_args():
-    global _args
-    with _args_lock:
-        if _args is None:
-            _args = Args.combined(first_load=True, silent=False)
-        return _args
-
-@dataclasses.dataclass
-class Args:
-    checkpoint: str
-    chunk_secs: float
-    overlap_secs: float
-    gains: List[float]
-    muted: List[bool]
-    soloed: List[bool]
-    normalize: bool
-    device: str
-    watch: bool = False
-
-    config_dir: str = dataclasses.field(default=None, repr=False, compare=False)
-    config_path: str = dataclasses.field(default=None, repr=False, compare=False)
-
-    def get_effective_gains(self) -> List[float]:
-        """Get the actual gains to apply, considering mute/solo state."""
-        effective_gains = []
-        any_soloed = any(self.soloed)
-
-        for i in range(len(self.gains)):
-            if self.muted[i]:
-                # Muted stems get 0 gain
-                effective_gains.append(0.0)
-            elif any_soloed and not self.soloed[i]:
-                # If any stems are soloed and this one isn't, mute it
-                effective_gains.append(0.0)
-            else:
-                # Use the configured gain
-                effective_gains.append(self.gains[i])
-
-        return effective_gains
-
-    @classmethod
-    def combined(cls, first_load, silent):
-        """Parse command line arguments for volume controls and chunk size."""
-
-        def maybe_debug(*args, **kwargs):
-            if not silent:
-                logging.debug(*args, **kwargs)
-
-        parser = argparse.ArgumentParser(description='Real-time audio stem separation')
-
-        parser.add_argument('--debug', action='store_true',
-                            help='Enable debug logging')
-
-        # Config JSON file
-        # Overridden temporarily by any provided command line args
-        # Defaults to the env variable $PA_LAMBDA_CONFIG_DIR or ~/.config/pulseaudio-lambda if not set
-        parser.add_argument('--config-dir', type=str, help='Path to config dir')
-
-        parser.add_argument('--save-config', action='store_true',
-                            help='If set, persist the current settings combination')
-
-        parser.add_argument('--watch', action='store_true',
-                            help='If set, watch the config file for changes and reload dynamically')
-
-        # Checkpoint
-        parser.add_argument('--checkpoint', type=str,
-                            help='Path to model checkpoint')
-
-        # Chunk size in seconds
-        parser.add_argument('--chunk-secs', type=float,
-                            help='Chunk size in seconds')
-
-        # Overlap size in seconds
-        parser.add_argument('--overlap-secs', type=float,
-                            help='Overlap size in seconds')
-
-        # Volume controls for each stem or m to mute
-        parser.add_argument('--gains', type=str,
-                            help='Stem gain change for drums,bass,vocals,other (e.g. 50,m,100,m to mute bass and other, with half volume drums and full volume vocals)')
-
-        # Normalization
-        parser.add_argument('--normalize', action='store_true',
-                            help='Normalize output volume to match input intensity after applying gains')
-
-        # Device selection
-        parser.add_argument('--device', type=str,
-                            help='Device to use (cuda/cpu)')
-
-        args = parser.parse_args()
-
-        # Set up logging to stderr (stdout is for audio)
-        logging.basicConfig(
-            level=logging.DEBUG if args.debug else logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            stream=sys.stderr
-        )
-
-        maybe_debug(f"CLI args: {args}")
-
-        # Defaults to the env variable $PA_LAMBDA_CONFIG_DIR or ~/.config/pulseaudio-lambda if not set
-        config_dir = (
-            args.config_dir if args.config_dir is not None
-            else os.environ.get('PA_LAMBDA_CONFIG_DIR',
-                                expand_path("~/.config/pulseaudio-lambda")))
-        maybe_debug(f"Using config dir: {config_dir}")
-        pathlib.Path(config_dir).mkdir(parents=True, exist_ok=True)
-        config_json_path = os.path.join(config_dir, "stream_separator_config.json")
-        config_args = {}
-        if os.path.exists(config_json_path):
-            with open(config_json_path, 'r') as f:
-                config_args = Args(
-                    config_dir=config_dir,
-                    config_path=config_json_path,
-                    **(json.load(f)))
-        maybe_debug(f"Loaded config args: {config_args}")
-
-        gains = (
-            [ 0.0 if x.strip() == "m" else float(x.strip())
-              for x in args.gains.split(",") ]
-            if args.gains is not None
-            else config_args.gains)
-        muted = (
-            [ x.strip() == "m" for x in args.gains.split(",") ]
-            if args.gains is not None
-            else config_args.muted)
-        soloed = (
-            [ x.strip() == "s" for x in args.gains.split(",") ]
-            if args.gains is not None
-            else config_args.soloed)
-
-        combined = cls(
-            gains=gains,
-            muted=muted,
-            soloed=soloed,
-            checkpoint=args.checkpoint if args.checkpoint is not None else config_args.checkpoint,
-            chunk_secs=args.chunk_secs if args.chunk_secs is not None else config_args.chunk_secs,
-            overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
-            device=args.device if args.device is not None else config_args.device,
-            watch=args.watch or config_args.watch,
-            normalize=args.normalize or config_args.normalize,
-            config_dir=config_dir,
-            config_path=config_json_path
-        )
-        maybe_debug(f"Combined config/CLI args: {combined}")
-
-        if args.save_config and first_load:
-            with open(config_json_path, 'w') as f:
-                json.dump(dataclasses.asdict(combined), f, indent=4)
-            logging.info(f"Saved config to {config_json_path}")
-
-        return combined
 
 @dataclasses.dataclass
 class Chunk:
@@ -249,7 +64,7 @@ def audio_input_thread(input_queue, sample_spec):
     try:
         last_input_audio_tensor = None
         while True:
-            args = get_args()
+            args = Args.get()
 
             # Read chunk from stdin
             num_bytes = sample_spec.secs_to_bytes(args.chunk_secs + args.overlap_secs)
@@ -302,7 +117,7 @@ def audio_inference_thread(input_queue, output_queue, sample_spec):
     model = None
 
     while True:
-        args = get_args()
+        args = Args.get()
 
         move_model = False
         if args.device != loaded_device:
@@ -491,20 +306,13 @@ def process_chunk(args, model, chunk):
 
 def main():
     """Main processing loop."""
-    args = get_args()
-
-    observer = None
-    if args.watch:
-        event_handler = ArgsEventHandler()
-        observer = Observer()
-        observer.schedule(event_handler, expand_path(args.config_dir))
-        observer.start()
+    args = Args.get()
 
     sample_spec = SampleSpec.from_env()
 
     # Set up audio output queue and thread
-    input_queue = queue.Queue(maxsize=100)
-    output_queue = queue.Queue(maxsize=100)
+    input_queue = queue.Queue()
+    output_queue = queue.Queue()
 
     input_thread = threading.Thread(
         target=audio_input_thread,
@@ -532,15 +340,13 @@ def main():
         input_thread.join()
         inference_thread.join()
         output_thread.join()
-        if observer is not None:
-            observer.join()
+        args.join()
     except BrokenPipeError:
         # Clean shutdown when pipeline closes
         logging.info("Pipeline closed, shutting down")
     except KeyboardInterrupt:
         logging.info("Interrupted by user")
-        if observer is not None:
-            observer.stop()
+        args.stop()
     except Exception as e:
         logging.error(f"Processing error: {e}")
         sys.exit(1)
