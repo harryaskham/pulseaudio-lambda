@@ -3,8 +3,8 @@
     package="org.pulseaudiolambda">
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.CAPTURE_AUDIO_OUTPUT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
     <application
         android:allowBackup="true"
@@ -21,6 +21,7 @@
         </activity>
         <service
             android:name=".StemService"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection|microphone" />
     </application>
 </manifest>

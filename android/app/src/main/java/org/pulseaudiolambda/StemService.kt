@@ -1,131 +1,95 @@
 package org.pulseaudiolambda
 
-import android.media.projection.MediaProjection
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
 import android.content.Context
-import android.media.*
+import android.content.Intent
+import android.media.projection.MediaProjection
 import android.os.Build
-import kotlinx.coroutines.*
-import org.pytorch.IValue
-import org.pytorch.Module
-import org.pytorch.Tensor
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
 
 /**
- * Captures system audio, runs the stem separation model and mixes
- * stems according to user-selected volumes.
+ * Foreground service that drives StemEngine.
+ * Start with action START and projection extras; send SET_VOLUME to adjust volumes.
  */
-class StemService(private val context: Context) {
-    private val scope = CoroutineScope(Dispatchers.Default)
-    private val volumes = mutableMapOf(
-        Stem.DRUMS to 1f,
-        Stem.GUITAR to 1f,
-        Stem.VOCALS to 1f,
-        Stem.OTHER to 1f,
-    )
+class StemService : Service() {
+    companion object {
+        const val ACTION_START = "org.pulseaudiolambda.action.START"
+        const val ACTION_STOP = "org.pulseaudiolambda.action.STOP"
+        const val ACTION_SET_VOLUME = "org.pulseaudiolambda.action.SET_VOLUME"
+        const val EXTRA_RESULT_CODE = "result_code"
+        const val EXTRA_RESULT_DATA = "result_data"
+        const val EXTRA_STEM = "stem"
+        const val EXTRA_VOLUME = "volume"
 
-    private var module: Module? = null
-    private var job: Job? = null
+        private const val CHANNEL_ID = "stem_channel"
+        private const val NOTIF_ID = 1001
+    }
 
-    /** Start capturing and processing audio. */
-    fun start(mediaProjection: MediaProjection? = null) {
-        module = Module.load(assetFilePath("separation.pt"))
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // mediaProjection must be obtained by prompting the user via MediaProjectionManager.
-            if (mediaProjection == null) return
-            val config = AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
-                .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-                .build()
+    private lateinit var engine: StemEngine
 
-            val sampleRate = 44100
-            val channelMaskIn = AudioFormat.CHANNEL_IN_STEREO
-            val channelMaskOut = AudioFormat.CHANNEL_OUT_STEREO
-            val encoding = AudioFormat.ENCODING_PCM_16BIT
+    override fun onCreate() {
+        super.onCreate()
+        engine = StemEngine(this)
+        createNotificationChannel()
+        startForeground(NOTIF_ID, buildNotification("Idle"))
+    }
 
-            val audioFormat = AudioFormat.Builder()
-                .setEncoding(encoding)
-                .setSampleRate(sampleRate)
-                .setChannelMask(channelMaskIn)
-                .build()
-
-            val minBufBytes = AudioRecord.getMinBufferSize(
-                sampleRate,
-                channelMaskIn,
-                encoding
-            ).coerceAtLeast(2048)
-
-            val record = AudioRecord.Builder()
-                .setAudioPlaybackCaptureConfig(config)
-                .setAudioFormat(audioFormat)
-                .setBufferSizeInBytes(minBufBytes)
-                .build()
-
-            val track = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(encoding)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(channelMaskOut)
-                        .build()
-                )
-                .setBufferSizeInBytes(minBufBytes)
-                .build()
-
-            job = scope.launch {
-                val buffer = ShortArray(minBufBytes / 2)
-                record.startRecording()
-                track.play()
-                while (isActive) {
-                    val read = record.read(buffer, 0, buffer.size)
-                    if (read > 0) {
-                        val out = process(buffer, read)
-                        track.write(out, 0, out.size)
-                    }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
+                    val data = intent.getParcelableExtra(EXTRA_RESULT_DATA, android.content.Intent::class.java)
+                    val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+                    val projection: MediaProjection? = if (code == android.app.Activity.RESULT_OK && data != null) mgr.getMediaProjection(code, data) else null
+                    val ok = projection?.let { engine.start(it) } ?: false
+                    updateNotification(if (ok) "Running" else "Model load failed")
+                } else updateNotification("Requires Android 10+")
+            }
+            ACTION_SET_VOLUME -> {
+                val stemName = intent.getStringExtra(EXTRA_STEM)
+                val vol = intent.getFloatExtra(EXTRA_VOLUME, 1f)
+                stemName?.let {
+                    runCatching { Stem.valueOf(it) }.getOrNull()?.let { engine.setVolume(it, vol) }
                 }
-                record.stop()
-                track.stop()
+            }
+            ACTION_STOP -> {
+                engine.stop()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
             }
         }
+        return START_STICKY
     }
 
-    fun stop() { job?.cancel() }
+    override fun onBind(intent: Intent?): IBinder? = null
 
-    fun setVolume(stem: Stem, volume: Float) { volumes[stem] = volume }
-
-    private fun process(samples: ShortArray, length: Int): ShortArray {
-        val floats = FloatArray(length)
-        for (i in 0 until length) floats[i] = samples[i] / 32768f
-        val input = Tensor.fromBlob(floats, longArrayOf(1, length.toLong()))
-        val outputs = module?.forward(IValue.from(input))?.toTensorList() ?: return samples
-        val mix = FloatArray(length)
-        val stems = Stem.values()
-        for (i in outputs.indices) {
-            val stemBuf = outputs[i].dataAsFloatArray
-            val vol = volumes[stems[i]] ?: 1f
-            for (j in 0 until length) {
-                mix[j] += stemBuf[j] * vol
-            }
-        }
-        val out = ShortArray(length)
-        for (i in 0 until length) {
-            val v = (mix[i] * 32768f).toInt().coerceIn(-32768, 32767)
-            out[i] = v.toShort()
-        }
-        return out
+    override fun onDestroy() {
+        engine.stop()
+        super.onDestroy()
     }
 
-    private fun assetFilePath(assetName: String): String {
-        val file = java.io.File(context.filesDir, assetName)
-        if (file.exists() && file.length() > 0) return file.absolutePath
-        context.assets.open(assetName).use { input ->
-            java.io.FileOutputStream(file).use { output ->
-                input.copyTo(output)
-            }
-        }
-        return file.absolutePath
+    private fun createNotificationChannel() {
+        val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channel = NotificationChannel(CHANNEL_ID, "Stem Separation", NotificationManager.IMPORTANCE_LOW)
+        mgr.createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(state: String): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("PA Lambda")
+            .setContentText("Stem service: $state")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun updateNotification(state: String) {
+        val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        mgr.notify(NOTIF_ID, buildNotification(state))
     }
 }
