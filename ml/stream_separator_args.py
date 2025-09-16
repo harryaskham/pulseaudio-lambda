@@ -10,9 +10,9 @@ import threading
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-def expand_path(path):
-    return os.path.expandvars(os.path.expanduser(path))
+from stream_separator_utils import expand_path
 
+# Live global args singletons for auto-refresh
 _args = None  # Global to hold parsed args
 _args_lock = threading.Lock()
 
@@ -46,45 +46,47 @@ class Args:
     observer: Observer | None = dataclasses.field(default=None, repr=False, compare=False)
 
     @classmethod
-    def refresh(cls, nowatch=False):
+    def get_config_dir(cls, args=None):
+        config_dir = (
+            args.config_dir if args is not None and args.config_dir is not None
+            else os.environ.get('PA_LAMBDA_CONFIG_DIR',
+                                expand_path("~/.config/pulseaudio-lambda")))
+        pathlib.Path(config_dir).mkdir(parents=True, exist_ok=True)
+        logging.info(f"Using config dir: {config_dir}")
+        return config_dir
+
+    @classmethod
+    def get_config_json_path(cls, config_dir=None, args=None):
+        if config_dir is None:
+            config_dir = cls.get_config_dir(args)
+        return os.path.join(config_dir, "stream_separator_config.json")
+
+    @classmethod
+    def refresh(cls):
         global _args
         with _args_lock:
             try:
-                _args = cls.combined(first_load=False, prev_args=_args, silent=False, nowatch=nowatch)
+                _args = cls.live(first_load=False, prev_args=_args, silent=False)
                 logging.debug("Refreshed args")
             except Exception as e:
                 logging.error(f"Error refreshing args: {e}")
             return _args
 
     @classmethod
-    def get(cls, nowatch=False):
-        global _args
-        with _args_lock:
-            if _args is None:
-                _args = Args.combined(first_load=True, prev_args=None, silent=False, nowatch=nowatch)
-            return _args
-
-    def get_effective_gains(self) -> List[float]:
-        """Get the actual gains to apply, considering mute/solo state."""
-        effective_gains = []
-        any_soloed = any(self.soloed)
-
-        for i in range(len(self.gains)):
-            if self.muted[i]:
-                # Muted stems get 0 gain
-                effective_gains.append(0.0)
-            elif any_soloed and not self.soloed[i]:
-                # If any stems are soloed and this one isn't, mute it
-                effective_gains.append(0.0)
-            else:
-                # Use the configured gain
-                effective_gains.append(self.gains[i])
-
-        return effective_gains
+    def get(cls, live=False):
+        """Either get the live args merged with CLI args, or just read the default config."""
+        if live:
+            global _args
+            with _args_lock:
+                if _args is None:
+                    _args = Args.live(first_load=True, prev_args=None, silent=False)
+                return _args
+        else:
+            return Args.read()
 
     @classmethod
-    def combined(cls, first_load, prev_args, silent, nowatch=False):
-        """Parse command line arguments for volume controls and chunk size."""
+    def live(cls, first_load, prev_args, silent):
+        """Get a live view of the args, merging CLI args and config file."""
 
         parser = argparse.ArgumentParser(description='Real-time audio stem separation')
 
@@ -137,27 +139,12 @@ class Args:
 
         logging.debug(f"CLI args: {args}")
 
-        # Defaults to the env variable $PA_LAMBDA_CONFIG_DIR or ~/.config/pulseaudio-lambda if not set
-        config_dir = (
-            args.config_dir if args.config_dir is not None
-            else os.environ.get('PA_LAMBDA_CONFIG_DIR',
-                                expand_path("~/.config/pulseaudio-lambda")))
-        pathlib.Path(config_dir).mkdir(parents=True, exist_ok=True)
-        logging.info(f"Using config dir: {config_dir}")
-
-        config_json_path = os.path.join(config_dir, "stream_separator_config.json")
-        config_args = {}
-        if os.path.exists(config_json_path):
-            with open(config_json_path, 'r') as f:
-                config_args = Args(
-                    config_dir=config_dir,
-                    config_path=config_json_path,
-                    observer=None,  # No observer yet, need to get 'watch' setting
-                    **(json.load(f)))
-        logging.info(f"Loaded config args: {config_args}")
+        config_dir = Args.get_config_dir(args)
+        config_json_path = Args.get_config_json_path(config_dir=config_dir, args=args)
+        config_args = Args.load(config_dir=config_dir)
 
         observer = prev_args.observer if prev_args is not None else None
-        watch = not nowatch and (args.watch or config_args.watch)
+        watch = args.watch or config_args.watch
         logging.info(f"Watch config for changes: {watch} (existing observer={observer})")
         if watch and (observer is None):
             logging.info(f"Setting up config file watcher for {config_dir}")
@@ -198,11 +185,31 @@ class Args:
         logging.info(f"Configuration: {combined}")
 
         if args.save_config and first_load:
-            with open(config_json_path, 'w') as f:
-                json.dump(dataclasses.asdict(combined), f, indent=4)
-            logging.info(f"Saved config to {config_json_path}")
+            combined.save()
 
         return combined
+
+    def read(self, config_dir=None):
+        """Read the config only, don't set up watching or merge with CLI args."""
+        config_json_path = self.get_config_json_path(config_dir=config_dir)
+        if not os.path.exists(config_json_path):
+            raise FileNotFoundError(f"Config file not found: {config_json_path}")
+        with open(config_json_path, 'r') as f:
+            args = Args(
+                config_dir=config_dir,
+                config_path=config_json_path,
+                observer=None,  # No observer yet, need to get 'watch' setting
+                **(json.load(f)))
+            logging.info(f"Loaded config args: {args}")
+            return args
+
+    def save(self):
+        try:
+            with open(self.config_path, 'w') as f:
+                json.dump(dataclasses.asdict(self), f, indent=4)
+            logging.info(f"Saved config to {self.config_path}")
+        except Exception as e:
+            logging.error(f"Failed to save config to {config_path}: {e}")
 
     def join(self):
         if self.observer is not None:
@@ -213,3 +220,43 @@ class Args:
             self.observer.stop()
             self.observer.join()
             self.observer = None
+
+    def get_effective_gains(self) -> List[float]:
+        """Get the actual gains to apply, considering mute/solo state."""
+        effective_gains = []
+        any_soloed = any(self.soloed)
+
+        for i in range(len(self.gains)):
+            if self.muted[i]:
+                # Muted stems get 0 gain
+                effective_gains.append(0.0)
+            elif any_soloed and not self.soloed[i]:
+                # If any stems are soloed and this one isn't, mute it
+                effective_gains.append(0.0)
+            else:
+                # Use the configured gain
+                effective_gains.append(self.gains[i])
+
+        return effective_gains
+
+    def reset_volumes(self):
+        """Reset all volumes to 100% and clear mute/solo state."""
+        self.gains = [100.0, 100.0, 100.0, 100.0]
+        self.muted = [False, False, False, False]
+        self.soloed = [False, False, False, False]
+
+    def toggle_mute(self, index: int):
+        """Toggle mute state for a stem."""
+        if 0 <= index < len(self.muted):
+            self.muted[index] = not self.muted[index]
+            # Clear solo when muting
+            if self.muted[index]:
+                self.soloed[index] = False
+
+    def toggle_solo(self, index: int):
+        """Toggle solo state for a stem."""
+        if 0 <= index < len(self.soloed):
+            self.soloed[index] = not self.soloed[index]
+            # Clear mute when soloing
+            if self.soloed[index]:
+                self.muted[index] = False

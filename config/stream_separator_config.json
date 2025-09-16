@@ -1,21 +1,21 @@
 {
     "gains": [
-        200.0,
-        148.34437086092714,
-        144.37086092715234,
-        159.73509933774835
+        100.0,
+        100.0,
+        100.0,
+        100.0
     ],
     "muted": [
         false,
         false,
-        true,
+        false,
         false
     ],
     "soloed": [
         false,
-        true,
         false,
-        true
+        false,
+        false
     ],
     "normalize": false,
     "device": "cpu",

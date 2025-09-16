@@ -69,11 +69,6 @@ class StreamSeparatorConfig:
         except Exception as e:
             logging.error(f"Failed to save config to {config_path}: {e}")
     
-    def get_stem_name(self, index: int) -> str:
-        """Get the name of a stem by index."""
-        names = ["Drums", "Bass", "Vocals", "Other"]
-        return names[index] if 0 <= index < len(names) else f"Stem {index}"
-    
     def get_effective_gains(self) -> List[float]:
         """Get the actual gains to apply, considering mute/solo state."""
         effective_gains = []
@@ -92,24 +87,3 @@ class StreamSeparatorConfig:
         
         return effective_gains
     
-    def reset_volumes(self):
-        """Reset all volumes to 100% and clear mute/solo state."""
-        self.gains = [100.0, 100.0, 100.0, 100.0]
-        self.muted = [False, False, False, False]
-        self.soloed = [False, False, False, False]
-    
-    def toggle_mute(self, index: int):
-        """Toggle mute state for a stem."""
-        if 0 <= index < len(self.muted):
-            self.muted[index] = not self.muted[index]
-            # Clear solo when muting
-            if self.muted[index]:
-                self.soloed[index] = False
-    
-    def toggle_solo(self, index: int):
-        """Toggle solo state for a stem."""
-        if 0 <= index < len(self.soloed):
-            self.soloed[index] = not self.soloed[index]
-            # Clear mute when soloing
-            if self.soloed[index]:
-                self.muted[index] = False
