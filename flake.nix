@@ -24,6 +24,7 @@
           ];
           
           buildInputs = with pkgs; [
+            makeWrapper
             pulseaudioFull
           ];
           
@@ -41,9 +42,13 @@
             
             mkdir -p $out/share/pulseaudio-lambda/lambdas
             cp -r lambdas/* $out/share/pulseaudio-lambda/lambdas/
-            chmod +x $out/share/pulseaudio-lambda/lambdas/*
+            ${pkgs.busybox}/bin/chmod +x $out/share/pulseaudio-lambda/lambdas/*
             
             runHook postInstall
+          '';
+
+          postInstall = ''
+            wrapProgram "$out/bin/pulseaudio-lambda" --set PATH "$PATH:$out/share/pulseaudio-lambda/lambdas"
           '';
         };
       in {
