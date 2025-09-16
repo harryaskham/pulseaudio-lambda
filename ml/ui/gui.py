@@ -62,24 +62,42 @@ class StreamSeparatorGUI:
         # Create sliders for each stem
         self.gain_vars = []
         self.gain_labels = []
+        self.mute_vars = []
+        self.solo_vars = []
         stems = ["Drums", "Bass", "Vocals", "Other"]
         
         for i, stem in enumerate(stems):
             # Label
             label = ttk.Label(volume_frame, text=f"{stem}:")
-            label.grid(row=i*2, column=0, sticky=tk.W, pady=5)
+            label.grid(row=i*3, column=0, sticky=tk.W, pady=5)
             
             # Value label
             value_label = ttk.Label(volume_frame, text="100%")
-            value_label.grid(row=i*2, column=2, sticky=tk.E, pady=5)
+            value_label.grid(row=i*3, column=2, sticky=tk.E, pady=5)
             self.gain_labels.append(value_label)
             
             # Slider
             var = tk.DoubleVar(value=100.0)
             slider = ttk.Scale(volume_frame, from_=0, to=200, orient=tk.HORIZONTAL,
                               variable=var, command=lambda v, idx=i: self.on_gain_change(idx, v))
-            slider.grid(row=i*2, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 10))
+            slider.grid(row=i*3, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 10))
             self.gain_vars.append(var)
+            
+            # Mute/Solo buttons
+            button_frame = ttk.Frame(volume_frame)
+            button_frame.grid(row=i*3+1, column=1, sticky=tk.W, pady=(0, 5))
+            
+            mute_var = tk.BooleanVar()
+            mute_check = ttk.Checkbutton(button_frame, text="Mute", variable=mute_var,
+                                        command=lambda idx=i: self.on_mute_change(idx))
+            mute_check.pack(side=tk.LEFT, padx=(0, 10))
+            self.mute_vars.append(mute_var)
+            
+            solo_var = tk.BooleanVar()
+            solo_check = ttk.Checkbutton(button_frame, text="Solo", variable=solo_var,
+                                        command=lambda idx=i: self.on_solo_change(idx))
+            solo_check.pack(side=tk.LEFT)
+            self.solo_vars.append(solo_var)
         
         # Processing Settings Section
         processing_frame = ttk.LabelFrame(main_frame, text="Processing Settings", padding="10")
@@ -93,7 +111,7 @@ class StreamSeparatorGUI:
         self.chunk_label.grid(row=0, column=2, sticky=tk.E, pady=5)
         
         self.chunk_var = tk.DoubleVar(value=2.0)
-        chunk_slider = ttk.Scale(processing_frame, from_=0.1, to=60.0, orient=tk.HORIZONTAL,
+        chunk_slider = ttk.Scale(processing_frame, from_=0.1, to=30.0, orient=tk.HORIZONTAL,
                                  variable=self.chunk_var, command=self.on_chunk_change)
         chunk_slider.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 10))
         
@@ -140,9 +158,15 @@ class StreamSeparatorGUI:
         auto_save_check.grid(row=row, column=0, columnspan=2, pady=10)
         row += 1
         
-        # Save button
-        save_btn = ttk.Button(main_frame, text="Save Configuration", command=self.save_config)
-        save_btn.grid(row=row, column=0, columnspan=2, pady=20)
+        # Buttons frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=row, column=0, columnspan=2, pady=20)
+        
+        reset_btn = ttk.Button(button_frame, text="Reset All Volumes", command=self.reset_all_volumes)
+        reset_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        save_btn = ttk.Button(button_frame, text="Save Configuration", command=self.save_config)
+        save_btn.pack(side=tk.LEFT)
         
         # Status bar
         self.status_label = ttk.Label(self.root, text="Ready", relief=tk.SUNKEN, anchor=tk.W)
@@ -155,6 +179,15 @@ class StreamSeparatorGUI:
             if i < len(self.config.gains):
                 var.set(self.config.gains[i])
                 self.gain_labels[i].config(text=f"{self.config.gains[i]:.0f}%")
+        
+        # Set mute/solo state
+        for i, var in enumerate(self.mute_vars):
+            if i < len(self.config.muted):
+                var.set(self.config.muted[i])
+        
+        for i, var in enumerate(self.solo_vars):
+            if i < len(self.config.soloed):
+                var.set(self.config.soloed[i])
         
         # Set processing settings
         self.chunk_var.set(self.config.chunk_secs)
@@ -210,6 +243,42 @@ class StreamSeparatorGUI:
         
         if self.auto_save_var.get():
             self.save_config_throttled()
+    
+    def on_mute_change(self, index):
+        """Handle mute checkbox change."""
+        self.config.toggle_mute(index)
+        
+        # Update solo checkboxes if needed
+        for i, var in enumerate(self.solo_vars):
+            var.set(self.config.soloed[i])
+        
+        if self.auto_save_var.get():
+            self.save_config_throttled()
+    
+    def on_solo_change(self, index):
+        """Handle solo checkbox change."""
+        self.config.toggle_solo(index)
+        
+        # Update all mute/solo checkboxes
+        for i, var in enumerate(self.mute_vars):
+            var.set(self.config.muted[i])
+        for i, var in enumerate(self.solo_vars):
+            var.set(self.config.soloed[i])
+        
+        if self.auto_save_var.get():
+            self.save_config_throttled()
+    
+    def reset_all_volumes(self):
+        """Reset all volumes to 100% and clear mute/solo state."""
+        self.config.reset_volumes()
+        self.load_config_to_ui()
+        
+        if self.auto_save_var.get():
+            self.save_config()
+        
+        self.status_label.config(text="All volumes reset to 100%")
+        # Clear status after 3 seconds
+        self.root.after(3000, lambda: self.status_label.config(text="Ready"))
     
     def browse_checkpoint(self):
         """Open file browser for checkpoint selection."""

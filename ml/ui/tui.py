@@ -127,6 +127,61 @@ class SliderWithLabel(Container):
         self.label.update(f"{self.label_text}: {self.format_str.format(val)}")
 
 
+class StemControl(Container):
+    """A complete stem control with slider, mute, and solo buttons."""
+    
+    def __init__(self, stem_name: str, value: float = 100.0, muted: bool = False, 
+                 soloed: bool = False, stem_index: int = 0, **kwargs):
+        super().__init__(**kwargs)
+        self.stem_name = stem_name
+        self.stem_index = stem_index
+        self.slider = SliderWithLabel(
+            stem_name,
+            value=value,
+            min_value=0.0,
+            max_value=200.0,
+            step=1.0,
+            format_str="{:.0f}%"
+        )
+        
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield self.slider
+            with Horizontal():
+                yield Button("M", variant="error" if self.muted else "default", 
+                           id=f"mute_{self.stem_index}")
+                yield Button("S", variant="warning" if self.soloed else "default", 
+                           id=f"solo_{self.stem_index}")
+    
+    @property
+    def value(self) -> float:
+        return self.slider.value
+    
+    @value.setter 
+    def value(self, val: float) -> None:
+        self.slider.value = val
+    
+    @property
+    def muted(self) -> bool:
+        return getattr(self, '_muted', False)
+    
+    @muted.setter
+    def muted(self, val: bool) -> None:
+        self._muted = val
+        mute_btn = self.query_one(f"#mute_{self.stem_index}")
+        mute_btn.variant = "error" if val else "default"
+    
+    @property
+    def soloed(self) -> bool:
+        return getattr(self, '_soloed', False)
+    
+    @soloed.setter
+    def soloed(self, val: bool) -> None:
+        self._soloed = val
+        solo_btn = self.query_one(f"#solo_{self.stem_index}")
+        solo_btn.variant = "warning" if val else "default"
+
+
 class StreamSeparatorTUI(App):
     """TUI for stream separator configuration."""
     
@@ -203,6 +258,7 @@ class StreamSeparatorTUI(App):
     def __init__(self):
         super().__init__()
         self.config = StreamSeparatorConfig.load()
+        self.stem_controls = {}
         self.sliders = {}
         self.device_radio = None
         self.checkpoint_input = None
@@ -222,17 +278,19 @@ class StreamSeparatorTUI(App):
                 
                 stems = ["Drums", "Bass", "Vocals", "Other"]
                 for i, stem in enumerate(stems):
-                    slider = SliderWithLabel(
+                    stem_control = StemControl(
                         stem,
                         value=self.config.gains[i],
-                        min_value=0.0,
-                        max_value=200.0,
-                        step=1.0,
-                        format_str="{:.0f}%",
-                        id=f"gain_{i}"
+                        muted=self.config.muted[i],
+                        soloed=self.config.soloed[i],
+                        stem_index=i,
+                        id=f"stem_{i}"
                     )
-                    self.sliders[f"gain_{i}"] = slider
-                    yield slider
+                    self.stem_controls[f"stem_{i}"] = stem_control
+                    yield stem_control
+                
+                # Reset button
+                yield Button("Reset All Volumes", variant="primary", id="reset-volumes")
             
             # Processing settings section
             with Container(classes="section"):
@@ -243,7 +301,7 @@ class StreamSeparatorTUI(App):
                     "Chunk Size (sec)",
                     value=self.config.chunk_secs,
                     min_value=0.1,
-                    max_value=60.0,
+                    max_value=30.0,
                     step=0.1,
                     format_str="{:.1f}",
                     id="chunk_secs"
@@ -307,6 +365,14 @@ class StreamSeparatorTUI(App):
         if event.button.id == "save-button":
             self.save_config()
             self.notify("Configuration saved!")
+        elif event.button.id == "reset-volumes":
+            self.reset_all_volumes()
+        elif event.button.id.startswith("mute_"):
+            stem_index = int(event.button.id.split("_")[1])
+            self.toggle_mute(stem_index)
+        elif event.button.id.startswith("solo_"):
+            stem_index = int(event.button.id.split("_")[1])
+            self.toggle_solo(stem_index)
     
     def save_config_throttled(self) -> None:
         """Save config with throttling to prevent excessive writes during slider drags."""
@@ -324,11 +390,11 @@ class StreamSeparatorTUI(App):
     
     def save_config(self) -> None:
         """Save the current configuration."""
-        # Update gains from sliders
+        # Update gains from stem controls
         for i in range(4):
-            slider_id = f"gain_{i}"
-            if slider_id in self.sliders:
-                self.config.gains[i] = self.sliders[slider_id].value
+            stem_id = f"stem_{i}"
+            if stem_id in self.stem_controls:
+                self.config.gains[i] = self.stem_controls[stem_id].value
         
         # Update other settings from sliders
         if "chunk_secs" in self.sliders:
@@ -336,9 +402,53 @@ class StreamSeparatorTUI(App):
         if "overlap_secs" in self.sliders:
             self.config.overlap_secs = self.sliders["overlap_secs"].value
         
-        # Save to file atomically
+        # Save to file
         self.config.save()
         self.last_save_time = time.time()
+    
+    def reset_all_volumes(self) -> None:
+        """Reset all volumes to 100% and clear mute/solo state."""
+        self.config.reset_volumes()
+        
+        # Update UI to reflect changes
+        for i in range(4):
+            stem_id = f"stem_{i}"
+            if stem_id in self.stem_controls:
+                stem_control = self.stem_controls[stem_id]
+                stem_control.value = 100.0
+                stem_control.muted = False
+                stem_control.soloed = False
+        
+        if self.auto_save:
+            self.save_config()
+        self.notify("All volumes reset to 100%")
+    
+    def toggle_mute(self, stem_index: int) -> None:
+        """Toggle mute state for a stem."""
+        self.config.toggle_mute(stem_index)
+        
+        # Update UI
+        stem_id = f"stem_{stem_index}"
+        if stem_id in self.stem_controls:
+            self.stem_controls[stem_id].muted = self.config.muted[stem_index]
+            self.stem_controls[stem_id].soloed = self.config.soloed[stem_index]
+        
+        if self.auto_save:
+            self.save_config()
+    
+    def toggle_solo(self, stem_index: int) -> None:
+        """Toggle solo state for a stem."""
+        self.config.toggle_solo(stem_index)
+        
+        # Update UI for all stems (solo affects all other stems)
+        for i in range(4):
+            stem_id = f"stem_{i}"
+            if stem_id in self.stem_controls:
+                self.stem_controls[stem_id].muted = self.config.muted[i]
+                self.stem_controls[stem_id].soloed = self.config.soloed[i]
+        
+        if self.auto_save:
+            self.save_config()
     
     def action_save(self) -> None:
         """Save action from keybinding."""

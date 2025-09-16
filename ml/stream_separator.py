@@ -20,7 +20,7 @@ import time
 import threading
 import queue
 from watchdog.observers import Observer
-from watchdog.events import LoggingEventHandler, FileSystemEventHandler
+from watchdog.events import LoggingEventHandler
 
 from buffer_hs_tasnet import BufferHSTasNet, SampleSpec
 
@@ -67,12 +67,32 @@ class Args:
     checkpoint: str
     chunk_secs: float
     overlap_secs: float
-    gains: List[str]
+    gains: List[float]
+    muted: List[bool]
+    soloed: List[bool]
     device: str
     watch: bool = False
 
     config_dir: str = dataclasses.field(default=None, repr=False, compare=False)
     config_path: str = dataclasses.field(default=None, repr=False, compare=False)
+
+    def get_effective_gains(self) -> List[float]:
+        """Get the actual gains to apply, considering mute/solo state."""
+        effective_gains = []
+        any_soloed = any(self.soloed)
+
+        for i in range(len(self.gains)):
+            if self.muted[i]:
+                # Muted stems get 0 gain
+                effective_gains.append(0.0)
+            elif any_soloed and not self.soloed[i]:
+                # If any stems are soloed and this one isn't, mute it
+                effective_gains.append(0.0)
+            else:
+                # Use the configured gain
+                effective_gains.append(self.gains[i])
+
+        return effective_gains
 
     @classmethod
     def combined(cls, first_load, silent):
@@ -151,9 +171,19 @@ class Args:
               for x in args.gains.split(",") ]
             if args.gains is not None
             else config_args.gains)
+        muted = (
+            [ x.strip() == "m" for x in args.gains.split(",") ]
+            if args.gains is not None
+            else config_args.muted)
+        soloed = (
+            [ x.strip() == "s" for x in args.gains.split(",") ]
+            if args.gains is not None
+            else config_args.soloed)
 
         combined = cls(
             gains=gains,
+            muted=muted,
+            soloed=soloed,
             checkpoint=args.checkpoint if args.checkpoint is not None else config_args.checkpoint,
             chunk_secs=args.chunk_secs if args.chunk_secs is not None else config_args.chunk_secs,
             overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
@@ -202,7 +232,7 @@ class Chunk:
         return (self.output_completed_at - self.received_at).total_seconds()
 
     def log_timing(self):
-        logging.info(f"Chunk timing: received at {self.received_at}, "
+        logging.debug(f"Chunk timing: received at {self.received_at}, "
                       f"processing started at {self.processing_started_at}, "
                       f"processing completed at {self.processing_completed_at}, "
                       f"output started at {self.output_started_at}, "
@@ -391,7 +421,7 @@ def process_chunk(args, model, chunk):
         overlap_samples_start = chunk.sample_spec.secs_to_samples_1ch(chunk.remove_overlap_start)
         overlap_samples_end = chunk.sample_spec.secs_to_samples_1ch(chunk.remove_overlap_end)
         separated_audios = separated_audios[:, :, overlap_samples_start:-overlap_samples_end]
-        logging.info(f"Dropped {overlap_samples_start + overlap_samples_end} samples of overlap, new shape: {separated_audios.shape}")
+        logging.debug(f"Dropped {overlap_samples_start + overlap_samples_end} samples of overlap, new shape: {separated_audios.shape}")
 
     # Extract stems: (batch, 4, channels, samples)
     drums = separated_audios[0, :, :]
@@ -400,14 +430,15 @@ def process_chunk(args, model, chunk):
     other = separated_audios[3, :, :]
     
     # Apply volume controls using proper audio gain
-    logging.debug(f"Applying gain transform: {args.gains}")
+    gains = args.get_effective_gains()
+    logging.debug(f"Applying effective gain transform: {gains}")
     log_stem_ranges(drums, bass, vocals, other, "before")
-    drums = apply_gain(drums, args.gains[0])
-    bass = apply_gain(bass, args.gains[1])
-    vocals = apply_gain(vocals, args.gains[2])
-    other = apply_gain(other, args.gains[3])
+    drums = apply_gain(drums, gains[0])
+    bass = apply_gain(bass, gains[1])
+    vocals = apply_gain(vocals, gains[2])
+    other = apply_gain(other, gains[3])
     log_stem_ranges(drums, bass, vocals, other, "after")
-    chunk.gains_applied = args.gains
+    chunk.gains_applied = gains
     
     # Mix stems back together with proper audio mixing (sum and normalize)
     mixed = drums + bass + vocals + other

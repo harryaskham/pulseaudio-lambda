@@ -14,6 +14,8 @@ import logging
 class StreamSeparatorConfig:
     """Configuration for the stream separator."""
     gains: List[float] = dataclasses.field(default_factory=lambda: [100.0, 100.0, 100.0, 100.0])
+    muted: List[bool] = dataclasses.field(default_factory=lambda: [False, False, False, False])
+    soloed: List[bool] = dataclasses.field(default_factory=lambda: [False, False, False, False])
     device: str = "cpu"
     chunk_secs: float = 2.0
     overlap_secs: float = 0.5
@@ -70,3 +72,43 @@ class StreamSeparatorConfig:
         """Get the name of a stem by index."""
         names = ["Drums", "Bass", "Vocals", "Other"]
         return names[index] if 0 <= index < len(names) else f"Stem {index}"
+    
+    def get_effective_gains(self) -> List[float]:
+        """Get the actual gains to apply, considering mute/solo state."""
+        effective_gains = []
+        any_soloed = any(self.soloed)
+        
+        for i in range(len(self.gains)):
+            if self.muted[i]:
+                # Muted stems get 0 gain
+                effective_gains.append(0.0)
+            elif any_soloed and not self.soloed[i]:
+                # If any stems are soloed and this one isn't, mute it
+                effective_gains.append(0.0)
+            else:
+                # Use the configured gain
+                effective_gains.append(self.gains[i])
+        
+        return effective_gains
+    
+    def reset_volumes(self):
+        """Reset all volumes to 100% and clear mute/solo state."""
+        self.gains = [100.0, 100.0, 100.0, 100.0]
+        self.muted = [False, False, False, False]
+        self.soloed = [False, False, False, False]
+    
+    def toggle_mute(self, index: int):
+        """Toggle mute state for a stem."""
+        if 0 <= index < len(self.muted):
+            self.muted[index] = not self.muted[index]
+            # Clear solo when muting
+            if self.muted[index]:
+                self.soloed[index] = False
+    
+    def toggle_solo(self, index: int):
+        """Toggle solo state for a stem."""
+        if 0 <= index < len(self.soloed):
+            self.soloed[index] = not self.soloed[index]
+            # Clear mute when soloing
+            if self.soloed[index]:
+                self.muted[index] = False

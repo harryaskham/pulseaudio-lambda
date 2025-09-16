@@ -1,13 +1,25 @@
 {
     "gains": [
-        0.0,
-        0.0,
-        99.73094170403587,
-        0.0
+        100.0,
+        100.0,
+        100.0,
+        100.0
+    ],
+    "muted": [
+        false,
+        false,
+        false,
+        false
+    ],
+    "soloed": [
+        false,
+        true,
+        false,
+        false
     ],
     "device": "cpu",
-    "chunk_secs": 3.0357210179076346,
-    "overlap_secs": 0.5183788878416589,
-    "checkpoint": "$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.52.pt",
+    "chunk_secs": 1.1,
+    "overlap_secs": 0.30000000000000004,
+    "checkpoint": "$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.50.pt",
     "watch": true
 }
