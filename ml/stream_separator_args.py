@@ -18,7 +18,7 @@ _args_lock = threading.Lock()
 
 class ArgsWatcher(FileSystemEventHandler):
     def refresh(self, event):
-        if event.src_path == expand_path(Args.get().config_path):
+        if event.src_path == expand_path(Args.get_live().config_path):
             logging.info("Reloaded config after change: %s", Args.refresh())
 
     def on_modified(self, event):
@@ -40,6 +40,7 @@ class Args:
     normalize: bool
     device: str
     watch: bool
+    gui: bool
 
     config_dir: str | None = dataclasses.field(default=None, repr=False, compare=False)
     config_path: str | None = dataclasses.field(default=None, repr=False, compare=False)
@@ -66,26 +67,22 @@ class Args:
         global _args
         with _args_lock:
             try:
-                _args = cls.live(first_load=False, prev_args=_args, silent=False)
+                _args = cls._load_live(first_load=False, prev_args=_args, silent=False)
                 logging.debug("Refreshed args")
             except Exception as e:
                 logging.error(f"Error refreshing args: {e}")
             return _args
 
     @classmethod
-    def get(cls, live=False):
-        """Either get the live args merged with CLI args, or just read the default config."""
-        if live:
-            global _args
-            with _args_lock:
-                if _args is None:
-                    _args = Args.live(first_load=True, prev_args=None, silent=False)
-                return _args
-        else:
-            return Args.read()
+    def get_live(cls):
+        global _args
+        with _args_lock:
+            if _args is None:
+                _args = Args._load_live(first_load=True, prev_args=None, silent=False)
+            return _args
 
     @classmethod
-    def live(cls, first_load, prev_args, silent):
+    def _load_live(cls, first_load, prev_args, silent):
         """Get a live view of the args, merging CLI args and config file."""
 
         parser = argparse.ArgumentParser(description='Real-time audio stem separation')
@@ -103,6 +100,9 @@ class Args:
 
         parser.add_argument('--watch', action='store_true',
                             help='If set, watch the config file for changes and reload dynamically')
+
+        parser.add_argument('--gui', action='store_true',
+                            help='If set, also launch the gui')
 
         # Checkpoint
         parser.add_argument('--checkpoint', type=str,
@@ -141,7 +141,7 @@ class Args:
 
         config_dir = Args.get_config_dir(args)
         config_json_path = Args.get_config_json_path(config_dir=config_dir, args=args)
-        config_args = Args.load(config_dir=config_dir)
+        config_args = Args.read(config_dir=config_dir)
 
         observer = prev_args.observer if prev_args is not None else None
         watch = args.watch or config_args.watch
@@ -177,6 +177,7 @@ class Args:
             overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
             device=args.device if args.device is not None else config_args.device,
             normalize=args.normalize or config_args.normalize,
+            gui=args.gui or config_args.gui,
             config_dir=config_dir,
             config_path=config_json_path,
             watch=watch,
@@ -189,13 +190,14 @@ class Args:
 
         return combined
 
-    def read(self, config_dir=None):
+    @classmethod
+    def read(cls, config_dir=None):
         """Read the config only, don't set up watching or merge with CLI args."""
-        config_json_path = self.get_config_json_path(config_dir=config_dir)
+        config_json_path = cls.get_config_json_path(config_dir=config_dir)
         if not os.path.exists(config_json_path):
             raise FileNotFoundError(f"Config file not found: {config_json_path}")
         with open(config_json_path, 'r') as f:
-            args = Args(
+            args = cls(
                 config_dir=config_dir,
                 config_path=config_json_path,
                 observer=None,  # No observer yet, need to get 'watch' setting
@@ -205,11 +207,15 @@ class Args:
 
     def save(self):
         try:
+            data = dataclasses.asdict(self)
+            del data['config_dir']
+            del data['config_path']
+            del data['observer']
             with open(self.config_path, 'w') as f:
-                json.dump(dataclasses.asdict(self), f, indent=4)
+                json.dump(data, f, indent=4)
             logging.info(f"Saved config to {self.config_path}")
         except Exception as e:
-            logging.error(f"Failed to save config to {config_path}: {e}")
+            logging.error(f"Failed to save config to {self.config_path}: {e}")
 
     def join(self):
         if self.observer is not None:

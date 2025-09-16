@@ -11,6 +11,7 @@ import queue
 
 from stream_separator_args import Args
 from stream_separator_utils import expand_path
+from ui.stream_separator_ui import run as run_ui
 from chunk import Chunk
 from buffer_hs_tasnet import BufferHSTasNet, SampleSpec
 
@@ -18,7 +19,7 @@ def audio_input_thread(input_queue, sample_spec):
     try:
         last_input_audio_tensor = None
         while True:
-            args = Args.get()
+            args = Args.get_live()
 
             # Read chunk from stdin
             num_bytes = sample_spec.secs_to_bytes(args.chunk_secs + args.overlap_secs)
@@ -71,7 +72,7 @@ def audio_inference_thread(input_queue, output_queue, sample_spec):
     model = None
 
     while True:
-        args = Args.get()
+        args = Args.get_live()
 
         move_model = False
         if args.device != loaded_device:
@@ -258,9 +259,19 @@ def process_chunk(args, model, chunk):
     chunk.truncated_audio_tensor = mixed
     return chunk
 
+def run_ui_thread():
+    run_ui("gui")
+
 def main():
     """Main processing loop."""
-    args = Args.get()
+    args = Args.get_live()
+
+    ui_thread = None
+    if args.gui:
+        ui_thread = threading.Thread(
+            target=run_ui_thread,
+            daemon=True)
+        ui_thread.start()
 
     sample_spec = SampleSpec.from_env()
 
@@ -292,6 +303,8 @@ def main():
         inference_thread.join()
         output_thread.join()
         args.join()
+        if ui_thread is not None:
+            ui_thread.join()
     except BrokenPipeError:
         # Clean shutdown when pipeline closes
         logging.info("Pipeline closed, shutting down")

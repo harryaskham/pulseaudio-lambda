@@ -13,7 +13,8 @@ from textual import events
 from textual.message import Message
 import asyncio
 import time
-from config_model import StreamSeparatorConfig
+
+from stream_separator_args import Args
 
 class Slider(Widget):
     """A custom slider widget with mouse support."""
@@ -256,7 +257,7 @@ class StreamSeparatorTUI(App):
     
     def __init__(self):
         super().__init__()
-        self.config = StreamSeparatorConfig.load()
+        self.config = Args.read()
         self.stem_controls = {}
         self.sliders = {}
         self.device_radio = None

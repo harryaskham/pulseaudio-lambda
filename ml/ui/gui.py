@@ -7,13 +7,14 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import os
 import time
-from config_model import StreamSeparatorConfig
+
+from stream_separator_args import Args
 
 class StreamSeparatorGUI:
     """GUI for stream separator configuration."""
     
     def __init__(self):
-        self.config = StreamSeparatorConfig.load()
+        self.config = Args.read()
         self.last_save_time = 0
         self.save_delay = 200  # Throttle saves to max once per 200ms
         self.pending_save = None  # Track pending save timer

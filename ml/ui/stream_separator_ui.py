@@ -8,29 +8,10 @@ import sys
 import argparse
 import logging
 
-def main():
-    parser = argparse.ArgumentParser(description="Stream Separator Configuration UI")
-    parser.add_argument(
-        "--mode", 
-        choices=["gui", "tui", "auto"],
-        default="auto",
-        help="UI mode: gui (graphical), tui (terminal), or auto (detect)"
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging"
-    )
-    
-    args = parser.parse_args()
-    
-    # Set up logging
-    log_level = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
-    
-    # Determine which UI to use
-    mode = args.mode
-    
+from ui.gui import StreamSeparatorGUI
+from ui.tui import StreamSeparatorTUI
+
+def run(mode: str):
     if mode == "auto":
         # Try to detect if we can use GUI
         try:
@@ -48,7 +29,6 @@ def main():
     # Launch the appropriate UI
     if mode == "gui":
         try:
-            from gui import StreamSeparatorGUI
             logging.info("Starting GUI mode...")
             app = StreamSeparatorGUI()
             app.run()
@@ -63,7 +43,6 @@ def main():
     
     if mode == "tui":
         try:
-            from tui import StreamSeparatorTUI
             logging.info("Starting TUI mode...")
             app = StreamSeparatorTUI()
             app.run()
@@ -74,6 +53,30 @@ def main():
         except Exception as e:
             logging.error(f"Failed to start TUI: {e}")
             sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Stream Separator Configuration UI")
+    parser.add_argument(
+        "--mode",
+        choices=["gui", "tui", "auto"],
+        default="auto",
+        help="UI mode: gui (graphical), tui (terminal), or auto (detect)"
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging"
+    )
+
+    args = parser.parse_args()
+
+    # Set up logging
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
+
+    # Determine which UI to use
+    run(args.mode)
 
 
 if __name__ == "__main__":
