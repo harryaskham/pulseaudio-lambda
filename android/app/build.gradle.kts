@@ -35,7 +35,10 @@ dependencies {
     implementation("com.google.android.material:material:1.9.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
+    // Coroutines for background audio processing
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
     // PyTorch mobile runtime
-    implementation("org.pytorch:pytorch_android_lite:1.12.2")
+    implementation("org.pytorch:pytorch_android:1.12.2")
     implementation("org.pytorch:pytorch_android_torchvision:1.12.2")
 }

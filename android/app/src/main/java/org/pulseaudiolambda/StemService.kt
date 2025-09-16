@@ -35,24 +35,48 @@ class StemService(private val context: Context) {
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
                 .build()
 
+            val sampleRate = 44100
+            val channelMaskIn = AudioFormat.CHANNEL_IN_STEREO
+            val channelMaskOut = AudioFormat.CHANNEL_OUT_STEREO
+            val encoding = AudioFormat.ENCODING_PCM_16BIT
+
+            val audioFormat = AudioFormat.Builder()
+                .setEncoding(encoding)
+                .setSampleRate(sampleRate)
+                .setChannelMask(channelMaskIn)
+                .build()
+
+            val minBufBytes = AudioRecord.getMinBufferSize(
+                sampleRate,
+                channelMaskIn,
+                encoding
+            ).coerceAtLeast(2048)
+
             val record = AudioRecord.Builder()
                 .setAudioPlaybackCaptureConfig(config)
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(44100)
-                        .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
-                        .build()
-                )
+                .setAudioFormat(audioFormat)
+                .setBufferSizeInBytes(minBufBytes)
                 .build()
 
             val track = AudioTrack.Builder()
-                .setAudioFormat(record.format)
-                .setBufferSizeInBytes(record.bufferSizeInFrames)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(encoding)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(channelMaskOut)
+                        .build()
+                )
+                .setBufferSizeInBytes(minBufBytes)
                 .build()
 
             job = scope.launch {
-                val buffer = ShortArray(2048)
+                val buffer = ShortArray(minBufBytes / 2)
                 record.startRecording()
                 track.play()
                 while (isActive) {
