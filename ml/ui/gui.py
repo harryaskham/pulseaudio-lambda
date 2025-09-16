@@ -136,6 +136,12 @@ class StreamSeparatorGUI:
         ttk.Radiobutton(device_frame, text="CUDA (GPU)", variable=self.device_var, 
                        value="cuda", command=self.on_device_change).grid(row=0, column=1, padx=10)
         
+        # Normalize checkbox
+        self.normalize_var = tk.BooleanVar(value=False)
+        normalize_check = ttk.Checkbutton(device_frame, text="Normalize output volume", 
+                                        variable=self.normalize_var, command=self.on_normalize_change)
+        normalize_check.grid(row=1, column=0, columnspan=2, pady=(10, 0))
+        
         # Checkpoint path
         checkpoint_frame = ttk.LabelFrame(main_frame, text="Model Checkpoint", padding="10")
         checkpoint_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
@@ -199,6 +205,9 @@ class StreamSeparatorGUI:
         # Set device
         self.device_var.set(self.config.device)
         
+        # Set normalize checkbox
+        self.normalize_var.set(self.config.normalize)
+        
         # Set checkpoint path
         self.checkpoint_var.set(self.config.checkpoint)
     
@@ -233,6 +242,13 @@ class StreamSeparatorGUI:
     def on_device_change(self):
         """Handle device selection change."""
         self.config.device = self.device_var.get()
+        
+        if self.auto_save_var.get():
+            self.save_config_throttled()
+    
+    def on_normalize_change(self):
+        """Handle normalize checkbox change."""
+        self.config.normalize = self.normalize_var.get()
         
         if self.auto_save_var.get():
             self.save_config_throttled()

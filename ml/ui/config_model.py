@@ -16,6 +16,7 @@ class StreamSeparatorConfig:
     gains: List[float] = dataclasses.field(default_factory=lambda: [100.0, 100.0, 100.0, 100.0])
     muted: List[bool] = dataclasses.field(default_factory=lambda: [False, False, False, False])
     soloed: List[bool] = dataclasses.field(default_factory=lambda: [False, False, False, False])
+    normalize: bool = False
     device: str = "cpu"
     chunk_secs: float = 2.0
     overlap_secs: float = 0.5

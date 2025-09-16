@@ -70,6 +70,7 @@ class Args:
     gains: List[float]
     muted: List[bool]
     soloed: List[bool]
+    normalize: bool
     device: str
     watch: bool = False
 
@@ -134,6 +135,10 @@ class Args:
         parser.add_argument('--gains', type=str,
                             help='Stem gain change for drums,bass,vocals,other (e.g. 50,m,100,m to mute bass and other, with half volume drums and full volume vocals)')
 
+        # Normalization
+        parser.add_argument('--normalize', action='store_true',
+                            help='Normalize output volume to match input intensity after applying gains')
+
         # Device selection
         parser.add_argument('--device', type=str,
                             help='Device to use (cuda/cpu)')
@@ -189,6 +194,7 @@ class Args:
             overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
             device=args.device if args.device is not None else config_args.device,
             watch=args.watch or config_args.watch,
+            normalize=args.normalize or config_args.normalize,
             config_dir=config_dir,
             config_path=config_json_path
         )
@@ -443,6 +449,19 @@ def process_chunk(args, model, chunk):
     # Mix stems back together with proper audio mixing (sum and normalize)
     mixed = drums + bass + vocals + other
     logging.debug(f"Mixed: peak={torch.max(torch.abs(mixed)):.3f}, samples={mixed.shape[-1] if len(mixed.shape) > 0 else 0}")
+
+    # Apply normalization if enabled
+    if args.normalize and torch.max(torch.abs(mixed)) > 0:
+        # Calculate RMS of original input
+        original_rms = torch.sqrt(torch.mean(chunk.input_audio_tensor ** 2))
+        # Calculate RMS of mixed output
+        mixed_rms = torch.sqrt(torch.mean(mixed ** 2))
+        
+        if mixed_rms > 0:
+            # Calculate normalization factor to match original intensity
+            normalization_factor = original_rms / mixed_rms
+            mixed = mixed * normalization_factor
+            logging.debug(f"Normalized: original_rms={original_rms:.6f}, mixed_rms={mixed_rms:.6f}, factor={normalization_factor:.3f}")
 
     chunk.processing_completed_at = datetime.datetime.now()
     chunk.truncated_audio_tensor = mixed

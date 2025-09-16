@@ -6,7 +6,7 @@ Uses Textual for a modern TUI with mouse support.
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
-from textual.widgets import Header, Footer, Label, Input, Button, Static, RadioSet, RadioButton
+from textual.widgets import Header, Footer, Label, Input, Button, Static, RadioSet, RadioButton, Checkbox
 from textual.widget import Widget
 from textual.reactive import reactive
 from textual import events
@@ -327,6 +327,9 @@ class StreamSeparatorTUI(App):
                 with RadioSet(id="device"):
                     yield RadioButton("CPU", value=self.config.device == "cpu")
                     yield RadioButton("CUDA", value=self.config.device == "cuda")
+                
+                # Normalize checkbox
+                yield Checkbox("Normalize output volume", value=self.config.normalize, id="normalize")
             
             # Checkpoint path section
             with Container(classes="section"):
@@ -357,6 +360,13 @@ class StreamSeparatorTUI(App):
         """Handle input field changes."""
         if event.input.id == "checkpoint":
             self.config.checkpoint = event.value
+            if self.auto_save:
+                self.save_config_throttled()
+    
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Handle checkbox changes."""
+        if event.checkbox.id == "normalize":
+            self.config.normalize = event.value
             if self.auto_save:
                 self.save_config_throttled()
     
