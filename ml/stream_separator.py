@@ -20,7 +20,7 @@ import time
 import threading
 import queue
 from watchdog.observers import Observer
-from watchdog.events import LoggingEventHandler
+from watchdog.events import FileSystemEventHandler
 
 from buffer_hs_tasnet import BufferHSTasNet, SampleSpec
 
@@ -40,7 +40,7 @@ def refresh_args():
             logging.error(f"Error refreshing args: {e}")
         return _args
 
-class ArgsEventHandler(LoggingEventHandler):
+class ArgsEventHandler(FileSystemEventHandler):
     def refresh(self, event):
         args = get_args()
         if event.src_path == expand_path(args.config_path):

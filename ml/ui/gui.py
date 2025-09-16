@@ -14,7 +14,6 @@ class StreamSeparatorGUI:
     
     def __init__(self):
         self.config = StreamSeparatorConfig.load()
-        self.auto_save = True
         self.last_save_time = 0
         self.save_delay = 200  # Throttle saves to max once per 200ms
         self.pending_save = None  # Track pending save timer
@@ -99,6 +98,10 @@ class StreamSeparatorGUI:
             solo_check.pack(side=tk.LEFT)
             self.solo_vars.append(solo_var)
         
+        # Reset button in volume controls
+        reset_btn = ttk.Button(volume_frame, text="Reset All Volumes", command=self.reset_all_volumes)
+        reset_btn.grid(row=len(stems)*3, column=0, columnspan=3, pady=(20, 10))
+        
         # Processing Settings Section
         processing_frame = ttk.LabelFrame(main_frame, text="Processing Settings", padding="10")
         processing_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
@@ -157,22 +160,6 @@ class StreamSeparatorGUI:
         browse_btn = ttk.Button(checkpoint_frame, text="Browse...", command=self.browse_checkpoint)
         browse_btn.grid(row=0, column=1, padx=(5, 0))
         
-        # Auto-save checkbox
-        self.auto_save_var = tk.BooleanVar(value=True)
-        auto_save_check = ttk.Checkbutton(main_frame, text="Auto-save changes", 
-                                          variable=self.auto_save_var)
-        auto_save_check.grid(row=row, column=0, columnspan=2, pady=10)
-        row += 1
-        
-        # Buttons frame
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=row, column=0, columnspan=2, pady=20)
-        
-        reset_btn = ttk.Button(button_frame, text="Reset All Volumes", command=self.reset_all_volumes)
-        reset_btn.pack(side=tk.LEFT, padx=(0, 10))
-        
-        save_btn = ttk.Button(button_frame, text="Save Configuration", command=self.save_config)
-        save_btn.pack(side=tk.LEFT)
         
         # Status bar
         self.status_label = ttk.Label(self.root, text="Ready", relief=tk.SUNKEN, anchor=tk.W)
@@ -218,8 +205,7 @@ class StreamSeparatorGUI:
         if index < len(self.config.gains):
             self.config.gains[index] = val
         
-        if self.auto_save_var.get():
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def on_chunk_change(self, value):
         """Handle chunk size slider change."""
@@ -227,8 +213,7 @@ class StreamSeparatorGUI:
         self.chunk_label.config(text=f"{val:.1f}")
         self.config.chunk_secs = val
         
-        if self.auto_save_var.get():
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def on_overlap_change(self, value):
         """Handle overlap slider change."""
@@ -236,29 +221,25 @@ class StreamSeparatorGUI:
         self.overlap_label.config(text=f"{val:.1f}")
         self.config.overlap_secs = val
         
-        if self.auto_save_var.get():
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def on_device_change(self):
         """Handle device selection change."""
         self.config.device = self.device_var.get()
         
-        if self.auto_save_var.get():
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def on_normalize_change(self):
         """Handle normalize checkbox change."""
         self.config.normalize = self.normalize_var.get()
         
-        if self.auto_save_var.get():
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def on_checkpoint_change(self):
         """Handle checkpoint path change."""
         self.config.checkpoint = self.checkpoint_var.get()
         
-        if self.auto_save_var.get():
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def on_mute_change(self, index):
         """Handle mute checkbox change."""
@@ -268,8 +249,7 @@ class StreamSeparatorGUI:
         for i, var in enumerate(self.solo_vars):
             var.set(self.config.soloed[i])
         
-        if self.auto_save_var.get():
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def on_solo_change(self, index):
         """Handle solo checkbox change."""
@@ -281,16 +261,13 @@ class StreamSeparatorGUI:
         for i, var in enumerate(self.solo_vars):
             var.set(self.config.soloed[i])
         
-        if self.auto_save_var.get():
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def reset_all_volumes(self):
         """Reset all volumes to 100% and clear mute/solo state."""
         self.config.reset_volumes()
         self.load_config_to_ui()
-        
-        if self.auto_save_var.get():
-            self.save_config()
+        self.save_config()
         
         self.status_label.config(text="All volumes reset to 100%")
         # Clear status after 3 seconds

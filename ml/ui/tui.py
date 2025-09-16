@@ -252,7 +252,6 @@ class StreamSeparatorTUI(App):
     
     BINDINGS = [
         ("q", "quit", "Quit"),
-        ("s", "save", "Save"),
     ]
     
     def __init__(self):
@@ -262,7 +261,6 @@ class StreamSeparatorTUI(App):
         self.sliders = {}
         self.device_radio = None
         self.checkpoint_input = None
-        self.auto_save = True
         self.last_save_time = 0
         self.save_delay = 0.2  # Throttle saves to max once per 200ms
     
@@ -346,8 +344,7 @@ class StreamSeparatorTUI(App):
     
     def on_slider_changed(self, message: Slider.Changed) -> None:
         """Handle slider value changes."""
-        if self.auto_save:
-            self.save_config_throttled()
+        self.save_config_throttled()
     
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         """Handle device selection change."""
@@ -429,8 +426,7 @@ class StreamSeparatorTUI(App):
                 stem_control.muted = False
                 stem_control.soloed = False
         
-        if self.auto_save:
-            self.save_config()
+        self.save_config()
         self.notify("All volumes reset to 100%")
     
     def toggle_mute(self, stem_index: int) -> None:
@@ -443,8 +439,7 @@ class StreamSeparatorTUI(App):
             self.stem_controls[stem_id].muted = self.config.muted[stem_index]
             self.stem_controls[stem_id].soloed = self.config.soloed[stem_index]
         
-        if self.auto_save:
-            self.save_config()
+        self.save_config()
     
     def toggle_solo(self, stem_index: int) -> None:
         """Toggle solo state for a stem."""
@@ -457,13 +452,7 @@ class StreamSeparatorTUI(App):
                 self.stem_controls[stem_id].muted = self.config.muted[i]
                 self.stem_controls[stem_id].soloed = self.config.soloed[i]
         
-        if self.auto_save:
-            self.save_config()
-    
-    def action_save(self) -> None:
-        """Save action from keybinding."""
         self.save_config()
-        self.notify("Configuration saved!")
     
     def action_quit(self) -> None:
         """Quit the application."""

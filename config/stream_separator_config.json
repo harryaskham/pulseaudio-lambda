@@ -1,15 +1,15 @@
 {
     "gains": [
-        99.8768472906404,
+        100.0,
         100.0,
         100.0,
         100.0
     ],
     "muted": [
-        true,
         false,
         false,
-        true
+        false,
+        false
     ],
     "soloed": [
         false,
@@ -19,8 +19,8 @@
     ],
     "normalize": true,
     "device": "cpu",
-    "chunk_secs": 4.956369426751592,
-    "overlap_secs": 0.5254777070063694,
+    "chunk_secs": 1.0392670157068062,
+    "overlap_secs": 0.24869109947643978,
     "checkpoint": "$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.50.pt",
     "watch": true
 }
