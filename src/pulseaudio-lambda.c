@@ -31,6 +31,7 @@ typedef struct {
     char *source_name;
     char *sink_name;
     char *lambda_command;
+    char *stream_name;
     
     // Audio format parameters
     uint32_t sample_rate;
@@ -45,9 +46,35 @@ typedef struct {
     int pipe_from_lambda[2];
     
     int running;
+    int created_virtual_sink;
 } lambda_bridge_t;
 
 static lambda_bridge_t bridge = {0};
+
+static int create_virtual_sink(void) {
+    // Check if the sink already exists
+    FILE *check = popen("pactl list sinks | grep -q 'Name: pulseaudio-lambda-input'", "r");
+    if (check) {
+        int result = pclose(check);
+        if (result == 0) {
+            // Sink already exists
+            printf("Virtual sink 'pulseaudio-lambda-input' already exists\n");
+            return 0;
+        }
+    }
+    
+    // Create the virtual sink
+    printf("Creating virtual sink 'pulseaudio-lambda-input'...\n");
+    int ret = system("pactl load-module module-null-sink sink_name=pulseaudio-lambda-input sink_properties=device.description='Lambda\\ Input'");
+    if (ret != 0) {
+        fprintf(stderr, "Failed to create virtual sink\n");
+        return -1;
+    }
+    
+    bridge.created_virtual_sink = 1;
+    printf("Virtual sink created successfully\n");
+    return 0;
+}
 
 static void cleanup(void) {
     printf("Cleaning up...\n");
@@ -74,6 +101,12 @@ static void cleanup(void) {
     if (bridge.pipe_to_lambda[1] >= 0) close(bridge.pipe_to_lambda[1]);
     if (bridge.pipe_from_lambda[0] >= 0) close(bridge.pipe_from_lambda[0]);
     if (bridge.pipe_from_lambda[1] >= 0) close(bridge.pipe_from_lambda[1]);
+    
+    // Unload virtual sink if we created it
+    if (bridge.created_virtual_sink) {
+        printf("Removing virtual sink...\n");
+        system("pactl unload-module module-null-sink sink_name=pulseaudio-lambda-input");
+    }
 }
 
 static void signal_handler(int sig) {
@@ -181,12 +214,15 @@ static int init_pulseaudio(void) {
     int error;
     
     // Connect to source (for recording)
+    char stream_desc[256];
+    snprintf(stream_desc, sizeof(stream_desc), "Lambda: %s", bridge.stream_name);
+    
     bridge.source_conn = pa_simple_new(
         NULL,                    // server
         "pulseaudio-lambda",     // application name
         PA_STREAM_RECORD,        // direction
         bridge.source_name,      // device name
-        "Lambda Input",          // stream description
+        stream_desc,            // stream description
         &sample_spec,           // sample format
         NULL,                   // channel map
         &buffer_attr,           // buffering attributes
@@ -206,7 +242,7 @@ static int init_pulseaudio(void) {
         "pulseaudio-lambda",     // application name  
         PA_STREAM_PLAYBACK,      // direction
         bridge.sink_name,        // device name
-        "Lambda Output",         // stream description
+        stream_desc,            // stream description (reuse same name)
         &sample_spec,           // sample format
         NULL,                   // channel map
         &buffer_attr,           // buffering attributes
@@ -302,16 +338,22 @@ static void run_bridge(void) {
 static void print_usage(const char *prog) {
     printf("Usage: %s [options] <lambda_command>\n", prog);
     printf("Options:\n");
-    printf("  -s, --source=NAME    PulseAudio source name\n");
-    printf("  -o, --sink=NAME      PulseAudio sink name  \n");
+    printf("  -s, --source=NAME    PulseAudio source name (creates virtual sink if not specified)\n");
+    printf("  -o, --sink=NAME      PulseAudio sink name\n");
+    printf("  -n, --name=NAME      Stream name shown in pavucontrol (defaults to lambda command)\n");
     printf("  -h, --help           Show this help\n");
     printf("\nExample:\n");
+    printf("  # With specific devices and name:\n");
     printf("  %s -s alsa_input.pci-0000_00_1f.3.analog-stereo \\\n", prog);
     printf("         -o alsa_output.pci-0000_00_1f.3.analog-stereo \\\n");
+    printf("         -n 'Voice Processor' \\\n");
     printf("         './lambdas/identity.sh'\n");
     printf("\n");
-    printf("  # Or use default devices:\n");
+    printf("  # Create virtual sink 'pulseaudio-lambda-input' and use defaults:\n");
     printf("  %s './lambdas/identity.sh'\n", prog);
+    printf("\n");
+    printf("  # With custom stream name:\n");
+    printf("  %s -n 'Stem Separator' './ml/stream_separator.py'\n", prog);
 }
 
 int main(int argc, char *argv[]) {
@@ -333,6 +375,8 @@ int main(int argc, char *argv[]) {
             bridge.source_name = strchr(argv[i], '=') + 1;
         } else if (strncmp(argv[i], "-o=", 3) == 0 || strncmp(argv[i], "--sink=", 7) == 0) {
             bridge.sink_name = strchr(argv[i], '=') + 1;
+        } else if (strncmp(argv[i], "-n=", 3) == 0 || strncmp(argv[i], "--name=", 7) == 0) {
+            bridge.stream_name = strchr(argv[i], '=') + 1;
         } else if (argv[i][0] != '-') {
             bridge.lambda_command = argv[i];
             break;
@@ -354,6 +398,21 @@ int main(int argc, char *argv[]) {
     printf("Lambda: %s\n", bridge.lambda_command);
     printf("Audio Format: %s, %uHz, %u channels, %u samples buffer\n",
            "S16LE", bridge.sample_rate, bridge.channels, bridge.buffer_size);
+    
+    // If no source specified, create virtual sink and use its monitor
+    if (!bridge.source_name) {
+        if (create_virtual_sink() < 0) {
+            // Continue anyway, just use default
+            printf("Warning: Could not create virtual sink, using default source\n");
+        } else {
+            bridge.source_name = "pulseaudio-lambda-input.monitor";
+        }
+    }
+    
+    // Use lambda command as stream name if not specified
+    if (!bridge.stream_name) {
+        bridge.stream_name = bridge.lambda_command;
+    }
     
     // Initialize components
     if (spawn_lambda() < 0) {

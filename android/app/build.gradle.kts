@@ -5,12 +5,13 @@ plugins {
 
 android {
     namespace = "org.pulseaudiolambda"
-    compileSdk = 33
+    compileSdk = 34
+    buildToolsVersion = "34.0.0"
 
     defaultConfig {
         applicationId = "org.pulseaudiolambda"
         minSdk = 29
-        targetSdk = 33
+        targetSdk = 34
         versionCode = 1
         versionName = "0.1"
     }

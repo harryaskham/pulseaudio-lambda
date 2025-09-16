@@ -21,20 +21,16 @@ let
     ];
   };
   gradle = pkgs.gradle.override { java = jdk; };
-  gradle_wrapped = pkgs.runCommandLocal "gradle-wrapped" {
-    nativeBuildInputs = with pkgs; [ makeBinaryWrapper ];
-  } ''
-    mkdir -p $out/bin
-    ln -s ${gradle}/bin/gradle $out/bin/gradle
-    wrapProgram $out/bin/gradle \
-    --add-flags "-Dorg.gradle.project.android.aapt2FromMavenOverride=''${ANDROID_SDK_ROOT}/build-tools/$buildToolsVersion/aapt2"
-  '';
 in
 pkgs.mkShell {
   inherit buildToolsVersion;
   buildInputs = [
     jdk
     androidComposition.androidsdk
-    gradle_wrapped
+    gradle
   ];
+  shellHook = ''
+    export ANDROID_SDK_ROOT=${androidComposition.androidsdk}/libexec/android-sdk
+    export ANDROID_HOME="$ANDROID_SDK_ROOT"
+  '';
 }

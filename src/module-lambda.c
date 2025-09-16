@@ -32,6 +32,8 @@
 #include <pulsecore/thread-mq.h>
 #include <pulsecore/rtpoll.h>
 #include <pulsecore/poll.h>
+#include <pulsecore/namereg.h>
+#include <stdbool.h>
 
 PA_MODULE_AUTHOR("PulseAudio Lambda Contributors");
 PA_MODULE_DESCRIPTION("Route audio through external process via stdin/stdout");
@@ -41,6 +43,8 @@ PA_MODULE_USAGE(
     "sink_name=<name of the sink> "
     "source_name=<name of the source> "
     "lambda_command=<command to execute> "
+    "stream_name=<name to display in pavucontrol> "
+    "source=<source to record from> "
     "format=<sample format> "
     "rate=<sample rate> "
     "channels=<number of channels> "
@@ -54,6 +58,8 @@ static const char* const valid_modargs[] = {
     "sink_name",
     "source_name", 
     "lambda_command",
+    "stream_name",
+    "source",
     "format",
     "rate",
     "channels",
@@ -81,6 +87,10 @@ struct userdata {
     
     pa_rtpoll_item *rtpoll_item_read;
     pa_rtpoll_item *rtpoll_item_write;
+    
+    /* Virtual sink for default input source */
+    pa_module *virtual_sink_module;
+    bool created_virtual_sink;
 };
 
 static void thread_func(void *userdata) {
@@ -308,6 +318,39 @@ int pa__init(pa_module *m) {
         goto fail;
     }
     
+    /* Handle source parameter - create virtual sink if not specified */
+    const char *source_arg = pa_modargs_get_value(ma, "source", NULL);
+    if (!source_arg) {
+        /* No source specified, create virtual sink */
+        pa_log_info("No source specified, creating virtual sink 'pulseaudio-lambda-input'");
+        
+        /* Check if virtual sink already exists */
+        pa_sink *existing_sink = pa_namereg_get(m->core, "pulseaudio-lambda-input", PA_NAMEREG_SINK);
+        if (!existing_sink) {
+            /* Create null-sink module */
+            char *args = pa_sprintf_malloc("sink_name=pulseaudio-lambda-input sink_properties=device.description='Lambda\\sInput'");
+            u->virtual_sink_module = pa_module_load(m->core, "module-null-sink", args);
+            pa_xfree(args);
+            
+            if (!u->virtual_sink_module) {
+                pa_log("Failed to create virtual sink");
+                goto fail;
+            }
+            u->created_virtual_sink = true;
+            pa_log_info("Created virtual sink 'pulseaudio-lambda-input'");
+        }
+        
+        /* Use the monitor of the virtual sink as our source */
+        source_arg = "pulseaudio-lambda-input.monitor";
+    }
+    
+    /* Get stream name for display */
+    const char *stream_name = pa_modargs_get_value(ma, "stream_name", NULL);
+    if (!stream_name) {
+        /* Use lambda command as default name */
+        stream_name = u->lambda_command;
+    }
+    
     if (spawn_lambda(u) < 0)
         goto fail;
     
@@ -317,7 +360,11 @@ int pa__init(pa_module *m) {
     pa_sink_new_data_set_name(&sink_data, pa_modargs_get_value(ma, "sink_name", DEFAULT_SINK_NAME));
     pa_sink_new_data_set_sample_spec(&sink_data, &ss);
     pa_sink_new_data_set_channel_map(&sink_data, &map);
-    pa_proplist_sets(sink_data.proplist, PA_PROP_DEVICE_DESCRIPTION, "Lambda Sink");
+    
+    /* Set description using stream name */
+    char *sink_description = pa_sprintf_malloc("Lambda: %s", stream_name);
+    pa_proplist_sets(sink_data.proplist, PA_PROP_DEVICE_DESCRIPTION, sink_description);
+    pa_xfree(sink_description);
     pa_proplist_sets(sink_data.proplist, PA_PROP_DEVICE_CLASS, "abstract");
     
     if (pa_modargs_get_proplist(ma, "sink_properties", sink_data.proplist, PA_UPDATE_REPLACE) < 0) {
@@ -348,7 +395,11 @@ int pa__init(pa_module *m) {
     pa_source_new_data_set_name(&source_data, pa_modargs_get_value(ma, "source_name", DEFAULT_SOURCE_NAME));
     pa_source_new_data_set_sample_spec(&source_data, &ss);
     pa_source_new_data_set_channel_map(&source_data, &map);
-    pa_proplist_sets(source_data.proplist, PA_PROP_DEVICE_DESCRIPTION, "Lambda Source");
+    
+    /* Set description using stream name */
+    char *source_description = pa_sprintf_malloc("Lambda: %s", stream_name);
+    pa_proplist_sets(source_data.proplist, PA_PROP_DEVICE_DESCRIPTION, source_description);
+    pa_xfree(source_description);
     pa_proplist_sets(source_data.proplist, PA_PROP_DEVICE_CLASS, "abstract");
     
     if (pa_modargs_get_proplist(ma, "source_properties", source_data.proplist, PA_UPDATE_REPLACE) < 0) {
@@ -456,6 +507,12 @@ void pa__done(pa_module *m) {
     
     if (u->pipe_from_lambda >= 0)
         pa_close(u->pipe_from_lambda);
+    
+    /* Clean up virtual sink if we created it */
+    if (u->created_virtual_sink && u->virtual_sink_module) {
+        pa_log_info("Unloading virtual sink module");
+        pa_module_unload(u->core, u->virtual_sink_module, true);
+    }
     
     pa_xfree(u->lambda_command);
     pa_xfree(u);

@@ -1,6 +1,6 @@
 package org.pulseaudiolambda
 
-import android.app.MediaProjection
+import android.media.projection.MediaProjection
 import android.content.Context
 import android.media.*
 import android.os.Build
