@@ -2,12 +2,12 @@
     "gains": [
         0.0,
         0.0,
-        200.0,
+        99.73094170403587,
         0.0
     ],
     "device": "cpu",
-    "chunk_secs": 5.0,
-    "overlap_secs": 0.45240339302544774,
+    "chunk_secs": 3.0357210179076346,
+    "overlap_secs": 0.5183788878416589,
     "checkpoint": "$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.52.pt",
     "watch": true
 }
