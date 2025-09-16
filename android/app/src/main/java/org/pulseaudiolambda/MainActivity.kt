@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupSlider(binding.drums, Stem.DRUMS)
-        setupSlider(binding.guitar, Stem.GUITAR)
+        setupSlider(binding.bass, Stem.BASS)
         setupSlider(binding.vocals, Stem.VOCALS)
         setupSlider(binding.other, Stem.OTHER)
     }
@@ -87,4 +87,4 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-enum class Stem { DRUMS, GUITAR, VOCALS, OTHER }
+enum class Stem { DRUMS, BASS, VOCALS, OTHER }

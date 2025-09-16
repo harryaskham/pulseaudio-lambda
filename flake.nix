@@ -31,7 +31,7 @@
           buildPhase = ''
             ls -la
             ls -la src/
-            make
+            make pulseaudio-lambda
           '';
           
           installPhase = ''
@@ -51,8 +51,45 @@
             wrapProgram "$out/bin/pulseaudio-lambda" --set PATH "$PATH:$out/share/pulseaudio-lambda/lambdas"
           '';
         };
+
+        pulseaudio-lambda-module = pkgs.stdenv.mkDerivation {
+          pname = "pulseaudio-lambda-module";
+          version = "0.1.0";
+          
+          src = ./.;
+          
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            gcc
+            gnumake
+          ];
+          
+          buildInputs = with pkgs; [
+            pulseaudioFull
+            pulseaudioFull.dev
+          ];
+          
+          buildPhase = ''
+            # Set PA_CFLAGS to include pulsecore headers
+            export PA_CFLAGS="$(pkg-config --cflags libpulse) -I${pkgs.pulseaudioFull.dev}/include/pulsecore -I${pkgs.pulseaudioFull.dev}/include"
+            make module-lambda.so
+          '';
+          
+          installPhase = ''
+            runHook preInstall
+            
+            mkdir -p $out/lib/pulse-${pkgs.pulseaudioFull.version}/modules
+            cp module-lambda.so $out/lib/pulse-${pkgs.pulseaudioFull.version}/modules/
+            
+            runHook postInstall
+          '';
+        };
       in {
-        packages.default = pulseaudio-lambda;
+        packages = {
+          default = pulseaudio-lambda;
+          binary = pulseaudio-lambda;
+          module = pulseaudio-lambda-module;
+        };
         devShells = pkgs.callPackage ./shells { inherit pulseaudio-lambda; };
       });
 }
