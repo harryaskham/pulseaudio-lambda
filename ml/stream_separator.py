@@ -32,12 +32,13 @@ def refresh_args():
     with _args_lock:
         _args = Args.combined(first_load=False, silent=True)
         logging.debug("Refreshed args")
+        return _args
 
 class ArgsEventHandler(FileSystemEventHandler):
     def on_modified(self, event):
         super().on_modified(event)
-        logging.debug("Reloading config after change: %s modified", event.src_path)
-        refresh_args()
+        args = refresh_args()
+        logging.info("Reloaded config after change: %s", args)
 
 def watch_args_thread():
     logging.debug("Starting refresh thread")
@@ -56,7 +57,8 @@ def get_args():
 @dataclasses.dataclass
 class Args:
     checkpoint: str
-    chunk_secs: int
+    chunk_secs: float
+    overlap_secs: float
     gains: List[str]
     device: str
     watch: bool = False
@@ -94,6 +96,10 @@ class Args:
         # Chunk size in seconds
         parser.add_argument('--chunk-secs', type=float,
                             help='Chunk size in seconds')
+
+        # Overlap size in seconds
+        parser.add_argument('--overlap-secs', type=float,
+                            help='Overlap size in seconds')
 
         # Volume controls for each stem or m to mute
         parser.add_argument('--gains', type=str,
@@ -143,7 +149,8 @@ class Args:
         combined = cls(
             gains=gains,
             checkpoint=checkpoint,
-            chunk_secs=int(args.chunk_secs if args.chunk_secs is not None else config_args.chunk_secs),
+            chunk_secs=args.chunk_secs if args.chunk_secs is not None else config_args.chunk_secs,
+            overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
             device=args.device if args.device is not None else config_args.device,
             watch=args.watch or config_args.watch,
             config_path=config_json_path
@@ -160,8 +167,11 @@ class Args:
 @dataclasses.dataclass
 class Chunk:
     sample_spec: SampleSpec
+    remove_overlap_start: float
+    remove_overlap_end: float
     input_audio_tensor: torch.Tensor
     processed_audio_tensor: torch.Tensor | None = None
+    truncated_audio_tensor: torch.Tensor | None = None
 
     received_at: datetime.datetime = dataclasses.field(default_factory=datetime.datetime.now, init=False)
     processing_started_at: datetime.datetime = None
@@ -170,8 +180,12 @@ class Chunk:
     output_completed_at: datetime.datetime = None
 
     @property
-    def duration_secs(self):
-        return self.processed_audio_tensor.shape[-1] / self.sample_spec.sample_rate
+    def processed_duration_secs(self):
+        return self.sample_spec.samples_to_secs(self.processed_audio_tensor.shape[-1])
+
+    @property
+    def truncated_duration_secs(self):
+        return self.sample_spec.samples_to_secs(self.truncated_audio_tensor.shape[-1])
 
     @property
     def latency_secs(self):
@@ -180,82 +194,44 @@ class Chunk:
         return (self.output_completed_at - self.received_at).total_seconds()
 
     def log_timing(self):
-        logging.debug(f"Chunk timing: received at {self.received_at}, "
+        logging.info(f"Chunk timing: received at {self.received_at}, "
                       f"processing started at {self.processing_started_at}, "
                       f"processing completed at {self.processing_completed_at}, "
                       f"output started at {self.output_started_at}, "
                       f"output completed at {self.output_completed_at}")
-        logging.info(f"Chunk completed: duration {self.duration_secs:.2f} s, latency {self.latency_secs:.1f} s")
-
-def queue_output_chunk(chunk, channels, bits, output_queue):
-    """Convert processed audio tensor to bytes and queue for output."""
-    chunk.output_started_at = datetime.datetime.now()
-    audio_tensor = chunk.processed_audio_tensor
-    logging.debug(f"queue_output_chunk input shape: {audio_tensor.shape}")
-    
-    # Ensure tensor is on CPU and in correct format
-    if audio_tensor.is_cuda:
-        audio_tensor = audio_tensor.cpu()
-    
-    ## Remove batch dimension if present
-    if audio_tensor.ndim == 3:
-        audio_tensor = audio_tensor[0]
-
-   # Ensure we have the right number of channels
-    if audio_tensor.shape[0] != channels:
-        raise ValueError(f"Wrong number of channels in output: {audio_tensor.shape[0]}")
-
-    # Ensure audio is properly bounded and convert to correct format
-    audio_clamped = torch.clamp(audio_tensor, -1.0, 1.0)
-    
-    # Convert to integer format using proper audio quantization
-    if bits == 16:
-        # Convert to 16-bit PCM using torchaudio's proper quantization
-        audio_int = (audio_clamped * 32767).round().to(torch.int16).numpy()
-    elif bits == 32:
-        audio_int = (audio_clamped * 2147483647).round().to(torch.int32).numpy()
-    else:
-        raise ValueError(f"Unsupported bit depth: {bits}")
-    
-    logging.debug(f"Converted audio range: [{audio_int.min()}, {audio_int.max()}]")
-    
-    # Convert to buffer-sized chunks and queue them
-    buffer_size = int(os.environ.get('PA_LAMBDA_BUFFER_SIZE', '1024'))
-    samples_per_buffer = buffer_size # 1024 samples per buffer
-    total_samples = audio_int.shape[-1]
-    format_char = 'h' if bits == 16 else 'i'
-    
-    logging.debug(f"Queueing {total_samples} samples in {samples_per_buffer}-sample buffers")
-    
-    for start_sample in range(0, total_samples, samples_per_buffer):
-        end_sample = min(start_sample + samples_per_buffer, total_samples)
-        
-        # Extract buffer-sized chunk
-        if channels == 2 and audio_int.shape[0] == 2:
-            # [[L L], [R R]] -> get samples [start:end] -> interleave to [L R L R]
-            segment = audio_int[:, start_sample:end_sample].T.flatten()
-        else:
-            segment = audio_int[start_sample:end_sample]
-        
-        # Pack only this small chunk and queue it
-        segment_data = struct.pack(f'<{len(segment)}{format_char}', *segment)
-        output_queue.put(segment_data)
-
-    output_queue.put(chunk)  # Indicate chunk is fully queued
-
-    logging.debug(f"Finished queueing {total_samples} samples")
+        logging.info(f"Chunk completed: processed {self.processed_duration_secs:.2f} s / truncated {self.truncated_duration_secs:.2f}, latency {self.latency_secs:.1f} s")
 
 def audio_input_thread(input_queue, sample_spec):
     try:
+        last_input_audio_tensor = None
         while True:
             args = get_args()
 
             # Read chunk from stdin
-            num_samples = args.chunk_secs * sample_spec.sample_rate
-            input_audio_tensor = sample_spec.read_chunk(sys.stdin.buffer, num_samples)
+            num_bytes = sample_spec.secs_to_bytes(args.chunk_secs + args.overlap_secs)
+            input_audio_tensor = sample_spec.read_chunk(sys.stdin.buffer, num_bytes)
             if input_audio_tensor is None:
                 break
-            input_queue.put(Chunk(sample_spec=sample_spec, input_audio_tensor=input_audio_tensor))
+
+            # If not the first chunk, add the overlap from the end of the last chunk
+            # This avoids the artefacts and popping we get at the edges of chunks
+            # We drop these segments after processing before output
+            remove_overlap_start = 0.0
+            remove_overlap_end = args.overlap_secs
+            if last_input_audio_tensor is not None:
+                remove_overlap_start = args.overlap_secs
+                overlap_samples_per_channel = sample_spec.secs_to_samples(args.overlap_secs)
+                overlap_segment = last_input_audio_tensor[:, -overlap_samples_per_channel:]
+                logging.info(f"Before overlap: {input_audio_tensor.shape}")
+                input_audio_tensor = torch.cat((overlap_segment, input_audio_tensor), dim=-1)
+                logging.info(f"Added overlap of {overlap_samples_per_channel} samples from last chunk")
+            last_input_audio_tensor = input_audio_tensor
+
+            input_queue.put(
+                Chunk(sample_spec=sample_spec,
+                      input_audio_tensor=input_audio_tensor,
+                      remove_overlap_start=remove_overlap_start,
+                      remove_overlap_end=remove_overlap_end))
 
     except Exception as e:
         logging.error(f"Processing error: {e}")
@@ -279,10 +255,12 @@ def audio_inference_thread(input_queue, output_queue, checkpoint, sample_spec):
         chunk = input_queue.get()
 
         logging.debug("Starting model processing...")
-        process_chunk(model, chunk, args.gains)
+        process_chunk(args, model, chunk)
         logging.debug("Model processing complete, queueing output...")
 
         # Queue processed audio for output thread
+        # We queue this up in frames of the PA buffer size
+        # TODO: move this work out of the inference thread
         queue_output_chunk(chunk, sample_spec.channels, sample_spec.bits, output_queue)
         logging.debug("Output queued, continuing loop...")
 
@@ -319,6 +297,65 @@ def audio_output_thread(output_queue, sample_spec):
     
     logging.info("Output thread stopping")
 
+def queue_output_chunk(chunk, channels, bits, output_queue):
+    """Convert processed audio tensor to bytes and queue for output."""
+    chunk.output_started_at = datetime.datetime.now()
+    audio_tensor = chunk.truncated_audio_tensor
+    logging.debug(f"queue_output_chunk input shape: {audio_tensor.shape}")
+
+    # Ensure tensor is on CPU and in correct format
+    if audio_tensor.is_cuda:
+        audio_tensor = audio_tensor.cpu()
+
+    ## Remove batch dimension if present
+    if audio_tensor.ndim == 3:
+        audio_tensor = audio_tensor[0]
+
+   # Ensure we have the right number of channels
+    if audio_tensor.shape[0] != channels:
+        raise ValueError(f"Wrong number of channels in output: {audio_tensor.shape[0]}")
+
+    # Ensure audio is properly bounded and convert to correct format
+    audio_clamped = torch.clamp(audio_tensor, -1.0, 1.0)
+
+    # Convert to integer format using proper audio quantization
+    if bits == 16:
+        # Convert to 16-bit PCM using torchaudio's proper quantization
+        audio_int = (audio_clamped * 32767).round().to(torch.int16).numpy()
+    elif bits == 32:
+        audio_int = (audio_clamped * 2147483647).round().to(torch.int32).numpy()
+    else:
+        raise ValueError(f"Unsupported bit depth: {bits}")
+
+    logging.debug(f"Converted audio range: [{audio_int.min()}, {audio_int.max()}]")
+
+    # Convert to buffer-sized chunks and queue them
+    buffer_size = int(os.environ.get('PA_LAMBDA_BUFFER_SIZE', '1024'))
+    samples_per_buffer = buffer_size # 1024 samples per buffer
+    total_samples = audio_int.shape[-1]
+    format_char = 'h' if bits == 16 else 'i'
+
+    logging.debug(f"Queueing {total_samples} samples in {samples_per_buffer}-sample buffers")
+
+    for start_sample in range(0, total_samples, samples_per_buffer):
+        end_sample = min(start_sample + samples_per_buffer, total_samples)
+
+        # Extract buffer-sized chunk
+        if channels == 2 and audio_int.shape[0] == 2:
+            # [[L L], [R R]] -> get samples [start:end] -> interleave to [L R L R]
+            segment = audio_int[:, start_sample:end_sample].T.flatten()
+        else:
+            segment = audio_int[start_sample:end_sample]
+
+        # Pack only this small chunk and queue it
+        segment_data = struct.pack(f'<{len(segment)}{format_char}', *segment)
+        output_queue.put(segment_data)
+
+    output_queue.put(chunk)  # Indicate chunk is fully queued
+
+    logging.debug(f"Finished queueing {total_samples} samples")
+
+
 def apply_gain(tensor, gain_db):
     """Apply volume scaling to audio tensor using torchaudio."""
     # TODO: move back to percent naming
@@ -332,12 +369,19 @@ def log_stem_range(stems, names, label):
 def log_stem_ranges(drums, bass, vocals, other, label):
     log_stem_range([drums, bass, vocals, other], ["Drums", "Bass", "Vocals", "Others"], label)
 
-def process_chunk(model, chunk, gains):
+def process_chunk(args, model, chunk):
     """Process a single audio chunk through the model."""
     chunk.processing_started_at = datetime.datetime.now()
 
-    separated_audios = model.process_audio_tensor(chunk.input_audio_tensor)
+    chunk.processed_audio_tensor = model.process_audio_tensor(chunk.input_audio_tensor)
+    separated_audios = chunk.processed_audio_tensor
     logging.debug(f"Got processed stems: {separated_audios.shape}")
+
+    # Drop the overlap segment at the start and end if present
+    overlap_samples_start = chunk.sample_spec.secs_to_samples_1ch(chunk.remove_overlap_start)
+    overlap_samples_end = chunk.sample_spec.secs_to_samples_1ch(chunk.remove_overlap_end)
+    separated_audios = separated_audios[:, :, overlap_samples_start:-overlap_samples_end]
+    logging.info(f"Dropped {overlap_samples_start + overlap_samples_end} samples of overlap, new shape: {separated_audios.shape}")
 
     # Extract stems: (batch, 4, channels, samples)
     drums = separated_audios[0, :, :]
@@ -346,12 +390,12 @@ def process_chunk(model, chunk, gains):
     other = separated_audios[3, :, :]
     
     # Apply volume controls using proper audio gain
-    logging.debug(f"Applying gain transform: {gains}")
+    logging.debug(f"Applying gain transform: {args.gains}")
     log_stem_ranges(drums, bass, vocals, other, "before")
-    drums = apply_gain(drums, gains[0])
-    bass = apply_gain(bass, gains[1])
-    vocals = apply_gain(vocals, gains[2])
-    other = apply_gain(other, gains[3])
+    drums = apply_gain(drums, args.gains[0])
+    bass = apply_gain(bass, args.gains[1])
+    vocals = apply_gain(vocals, args.gains[2])
+    other = apply_gain(other, args.gains[3])
     log_stem_ranges(drums, bass, vocals, other, "after")
     
     # Mix stems back together with proper audio mixing (sum and normalize)
@@ -359,7 +403,7 @@ def process_chunk(model, chunk, gains):
     logging.debug(f"Mixed: peak={torch.max(torch.abs(mixed)):.3f}, samples={mixed.shape[-1] if len(mixed.shape) > 0 else 0}")
 
     chunk.processing_completed_at = datetime.datetime.now()
-    chunk.processed_audio_tensor = mixed
+    chunk.truncated_audio_tensor = mixed
     return chunk
 
 def main():
@@ -413,9 +457,6 @@ def main():
         logging.info("Pipeline closed, shutting down")
     except KeyboardInterrupt:
         logging.info("Interrupted by user")
-        input_thread.stop()
-        inference_thread.stop()
-        output_thread.stop()
         if observer is not None:
             observer.stop()
     except Exception as e:

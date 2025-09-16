@@ -1,11 +1,12 @@
 {
     "checkpoint": "$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.36.pt",
-    "chunk_secs": 1.0,
+    "chunk_secs": 30.0,
+    "overlap_secs": 1.0,
     "gains": [
-        0.0,
-        0.0,
         100.0,
-        0.0
+        100.0,
+        100.0,
+        100.0
     ],
     "device": "cpu",
     "watch": true

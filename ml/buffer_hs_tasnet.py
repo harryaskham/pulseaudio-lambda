@@ -28,6 +28,21 @@ class SampleSpec:
       logging.info(f"Audio format: {r.sample_rate}Hz, {r.channels} channels, {r.bits} bits")
       return r
 
+   # e.g. for 1 second of audio we need 44.1k samples
+   # the mono/stereo aspect doesn't matter here, it's 44.1k samples either way,
+   # either interleaved or mono.
+   def secs_to_samples(self, secs):
+      return int(secs * self.sample_rate)
+
+   def secs_to_samples_1ch(self, secs):
+      return self.secs_to_samples(secs) // self.channels
+
+   def samples_to_secs(self, samples):
+      return samples / self.sample_rate
+
+   def secs_to_bytes(self, secs):
+      return self.secs_to_samples(secs) * self.bytes_per_sample
+
    @property
    def bytes_per_sample(self):
       return self.bits // 8
