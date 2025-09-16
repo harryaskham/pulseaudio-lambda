@@ -281,22 +281,44 @@ def audio_input_thread(input_queue, sample_spec):
         logging.error(f"Processing error: {e}")
         sys.exit(1)
 
-def audio_inference_thread(input_queue, output_queue, checkpoint, sample_spec):
-    init_args = get_args()
+def audio_inference_thread(input_queue, output_queue, sample_spec):
+    loaded_checkpoint = None
+    loaded_device = None
 
-    # Set up device
-    device = torch.device(init_args.device)
-    logging.info(f"Using device: {device}")
+    def reload_device(args):
+        device = torch.device(args.device)
+        logging.info(f"Using device: {device}")
+        return device
 
-    # Load model
-    logging.info("Loading HS-TasNet model...")
-    model = BufferHSTasNet(sample_spec).to(device)
-    checkpoint_path = expand_path(checkpoint)
-    model.load(checkpoint_path)
-    logging.info(f"Checkpoint {checkpoint_path} loaded successfully")
+    def reload_model(args):
+        logging.info("Loading HS-TasNet model...")
+        model = BufferHSTasNet(sample_spec)
+        checkpoint_path = expand_path(args.checkpoint)
+        model.load(checkpoint_path)
+        logging.info(f"Checkpoint {checkpoint_path} loaded successfully")
+        return model
+
+    device = None
+    model = None
 
     while True:
         args = get_args()
+
+        move_model = False
+        if args.device != loaded_device:
+            device = reload_device(args)
+            loaded_device = args.device
+            move_model = True
+
+        if args.checkpoint != loaded_checkpoint:
+            model = reload_model(args)
+            loaded_checkpoint = args.checkpoint
+            move_model = True
+
+        if move_model:
+            model = model.to(device)
+            move_model = False
+
         chunk = input_queue.get()
 
         logging.debug("Starting model processing...")
@@ -478,7 +500,6 @@ def main():
         observer.schedule(event_handler, expand_path(args.config_dir))
         observer.start()
 
-    checkpoint = args.checkpoint
     sample_spec = SampleSpec.from_env()
 
     # Set up audio output queue and thread
@@ -491,7 +512,7 @@ def main():
         daemon=True)
     inference_thread = threading.Thread(
         target=audio_inference_thread,
-        args=(input_queue, output_queue, checkpoint, sample_spec),
+        args=(input_queue, output_queue, sample_spec),
         daemon=True)
     output_thread = threading.Thread(
         target=audio_output_thread,

@@ -17,10 +17,10 @@
         false,
         false
     ],
-    "normalize": true,
-    "device": "cpu",
-    "chunk_secs": 1.0392670157068062,
-    "overlap_secs": 0.24869109947643978,
+    "normalize": false,
+    "device": "cuda",
+    "chunk_secs": 2.0104011887072804,
+    "overlap_secs": 0.22288261515601784,
     "checkpoint": "$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.50.pt",
     "watch": true
 }
