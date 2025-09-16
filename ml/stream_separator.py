@@ -20,32 +20,40 @@ import time
 import threading
 import queue
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 
 from buffer_hs_tasnet import BufferHSTasNet, SampleSpec
 
 _args = None  # Global to hold parsed args
 _args_lock = threading.Lock()
 
+def expand_path(path):
+    return os.path.expandvars(os.path.expanduser(path))
+
 def refresh_args():
     global _args
     with _args_lock:
-        _args = Args.combined(first_load=False, silent=True)
-        logging.debug("Refreshed args")
+        try:
+            _args = Args.combined(first_load=False, silent=True)
+            logging.debug("Refreshed args")
+        except Exception as e:
+            logging.error(f"Error refreshing args: {e}")
         return _args
 
-class ArgsEventHandler(FileSystemEventHandler):
+class ArgsEventHandler(LoggingEventHandler):
+    def refresh(self, event):
+        args = get_args()
+        if event.src_path == expand_path(args.config_path):
+            args = refresh_args()
+            logging.info("Reloaded config after change: %s", args)
+
     def on_modified(self, event):
         super().on_modified(event)
-        args = refresh_args()
-        logging.info("Reloaded config after change: %s", args)
+        self.refresh(event)
 
-def watch_args_thread():
-    logging.debug("Starting refresh thread")
-    while True:
-        refresh_args()
-        time.sleep(1)
-        logging.debug("Loading args again in 1s...")
+    def on_moved(self, event):
+        super().on_moved(event)
+        self.refresh(event)
 
 def get_args():
     global _args
@@ -63,6 +71,7 @@ class Args:
     device: str
     watch: bool = False
 
+    config_dir: str = dataclasses.field(default=None, repr=False, compare=False)
     config_path: str = dataclasses.field(default=None, repr=False, compare=False)
 
     @classmethod
@@ -124,14 +133,17 @@ class Args:
         config_dir = (
             args.config_dir if args.config_dir is not None
             else os.environ.get('PA_LAMBDA_CONFIG_DIR',
-                                os.path.expanduser("~/.config/pulseaudio-lambda")))
+                                expand_path("~/.config/pulseaudio-lambda")))
         maybe_debug(f"Using config dir: {config_dir}")
         pathlib.Path(config_dir).mkdir(parents=True, exist_ok=True)
         config_json_path = os.path.join(config_dir, "stream_separator_config.json")
         config_args = {}
         if os.path.exists(config_json_path):
             with open(config_json_path, 'r') as f:
-                config_args = Args(config_path=config_json_path, **(json.load(f)))
+                config_args = Args(
+                    config_dir=config_dir,
+                    config_path=config_json_path,
+                    **(json.load(f)))
         maybe_debug(f"Loaded config args: {config_args}")
 
         gains = (
@@ -139,20 +151,15 @@ class Args:
               for x in args.gains.split(",") ]
             if args.gains is not None
             else config_args.gains)
-        checkpoint = (
-            os.path.expandvars(
-                os.path.expanduser(
-                    args.checkpoint
-                    if args.checkpoint is not None
-                    else config_args.checkpoint)))
 
         combined = cls(
             gains=gains,
-            checkpoint=checkpoint,
+            checkpoint=args.checkpoint if args.checkpoint is not None else config_args.checkpoint,
             chunk_secs=args.chunk_secs if args.chunk_secs is not None else config_args.chunk_secs,
             overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
             device=args.device if args.device is not None else config_args.device,
             watch=args.watch or config_args.watch,
+            config_dir=config_dir,
             config_path=config_json_path
         )
         maybe_debug(f"Combined config/CLI args: {combined}")
@@ -172,6 +179,7 @@ class Chunk:
     input_audio_tensor: torch.Tensor
     processed_audio_tensor: torch.Tensor | None = None
     truncated_audio_tensor: torch.Tensor | None = None
+    gains_applied: List[float] | None = None
 
     received_at: datetime.datetime = dataclasses.field(default_factory=datetime.datetime.now, init=False)
     processing_started_at: datetime.datetime = None
@@ -199,7 +207,7 @@ class Chunk:
                       f"processing completed at {self.processing_completed_at}, "
                       f"output started at {self.output_started_at}, "
                       f"output completed at {self.output_completed_at}")
-        logging.info(f"Chunk completed: processed {self.processed_duration_secs:.2f} s / truncated {self.truncated_duration_secs:.2f}, latency {self.latency_secs:.1f} s")
+        logging.info(f"Chunk completed: gains {self.gains_applied}, processed {self.processed_duration_secs:.2f} s / truncated {self.truncated_duration_secs:.2f}, latency {self.latency_secs:.1f} s")
 
 def audio_input_thread(input_queue, sample_spec):
     try:
@@ -218,13 +226,13 @@ def audio_input_thread(input_queue, sample_spec):
             # We drop these segments after processing before output
             remove_overlap_start = 0.0
             remove_overlap_end = args.overlap_secs
-            if last_input_audio_tensor is not None:
+            if last_input_audio_tensor is not None and args.overlap_secs > 0:
                 remove_overlap_start = args.overlap_secs
                 overlap_samples_per_channel = sample_spec.secs_to_samples(args.overlap_secs)
                 overlap_segment = last_input_audio_tensor[:, -overlap_samples_per_channel:]
-                logging.info(f"Before overlap: {input_audio_tensor.shape}")
+                logging.debug(f"Before overlap: {input_audio_tensor.shape}")
                 input_audio_tensor = torch.cat((overlap_segment, input_audio_tensor), dim=-1)
-                logging.info(f"Added overlap of {overlap_samples_per_channel} samples from last chunk")
+                logging.debug(f"Added overlap of {overlap_samples_per_channel} samples from last chunk")
             last_input_audio_tensor = input_audio_tensor
 
             input_queue.put(
@@ -247,8 +255,9 @@ def audio_inference_thread(input_queue, output_queue, checkpoint, sample_spec):
     # Load model
     logging.info("Loading HS-TasNet model...")
     model = BufferHSTasNet(sample_spec).to(device)
-    model.load(checkpoint)
-    logging.info(f"Checkpoint {checkpoint} loaded successfully")
+    checkpoint_path = expand_path(checkpoint)
+    model.load(checkpoint_path)
+    logging.info(f"Checkpoint {checkpoint_path} loaded successfully")
 
     while True:
         args = get_args()
@@ -378,10 +387,11 @@ def process_chunk(args, model, chunk):
     logging.debug(f"Got processed stems: {separated_audios.shape}")
 
     # Drop the overlap segment at the start and end if present
-    overlap_samples_start = chunk.sample_spec.secs_to_samples_1ch(chunk.remove_overlap_start)
-    overlap_samples_end = chunk.sample_spec.secs_to_samples_1ch(chunk.remove_overlap_end)
-    separated_audios = separated_audios[:, :, overlap_samples_start:-overlap_samples_end]
-    logging.info(f"Dropped {overlap_samples_start + overlap_samples_end} samples of overlap, new shape: {separated_audios.shape}")
+    if chunk.remove_overlap_start + chunk.remove_overlap_end > 0:
+        overlap_samples_start = chunk.sample_spec.secs_to_samples_1ch(chunk.remove_overlap_start)
+        overlap_samples_end = chunk.sample_spec.secs_to_samples_1ch(chunk.remove_overlap_end)
+        separated_audios = separated_audios[:, :, overlap_samples_start:-overlap_samples_end]
+        logging.info(f"Dropped {overlap_samples_start + overlap_samples_end} samples of overlap, new shape: {separated_audios.shape}")
 
     # Extract stems: (batch, 4, channels, samples)
     drums = separated_audios[0, :, :]
@@ -397,6 +407,7 @@ def process_chunk(args, model, chunk):
     vocals = apply_gain(vocals, args.gains[2])
     other = apply_gain(other, args.gains[3])
     log_stem_ranges(drums, bass, vocals, other, "after")
+    chunk.gains_applied = args.gains
     
     # Mix stems back together with proper audio mixing (sum and normalize)
     mixed = drums + bass + vocals + other
@@ -414,7 +425,7 @@ def main():
     if args.watch:
         event_handler = ArgsEventHandler()
         observer = Observer()
-        observer.schedule(event_handler, args.config_path)
+        observer.schedule(event_handler, expand_path(args.config_dir))
         observer.start()
 
     checkpoint = args.checkpoint

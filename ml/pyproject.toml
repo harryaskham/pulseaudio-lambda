@@ -20,6 +20,7 @@ dependencies = [
     "wandb",
     "termplotlib",
     "watchdog",
+    "textual>=0.40.0", # For TUI interface
 ]
 
 [[tool.uv.index]]
