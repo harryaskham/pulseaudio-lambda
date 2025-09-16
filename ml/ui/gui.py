@@ -129,6 +129,10 @@ class StreamSeparatorGUI:
                                    variable=self.overlap_var, command=self.on_overlap_change)
         overlap_slider.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=(10, 10))
         
+        # Empty Queues button
+        empty_btn = ttk.Button(processing_frame, text="Empty Queues", command=self.empty_queues)
+        empty_btn.grid(row=2, column=0, columnspan=3, pady=(10, 0))
+        
         # Device selection
         device_frame = ttk.LabelFrame(main_frame, text="Device", padding="10")
         device_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
@@ -271,6 +275,13 @@ class StreamSeparatorGUI:
         self.save_config()
         
         self.status_label.config(text="All volumes reset to 100%")
+        # Clear status after 3 seconds
+        self.root.after(3000, lambda: self.status_label.config(text="Ready"))
+    
+    def empty_queues(self):
+        """Request emptying of audio processing queues."""
+        self.config.request_empty_queues()
+        self.status_label.config(text="Queue emptying requested")
         # Clear status after 3 seconds
         self.root.after(3000, lambda: self.status_label.config(text="Ready"))
     

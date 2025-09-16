@@ -329,6 +329,9 @@ class StreamSeparatorTUI(App):
                 
                 # Normalize checkbox
                 yield Checkbox("Normalize output volume", value=self.config.normalize, id="normalize")
+                
+                # Empty Queues button
+                yield Button("Empty Queues", variant="default", id="empty-queues")
             
             # Checkpoint path section
             with Container(classes="section"):
@@ -375,6 +378,8 @@ class StreamSeparatorTUI(App):
             self.notify("Configuration saved!")
         elif event.button.id == "reset-volumes":
             self.reset_all_volumes()
+        elif event.button.id == "empty-queues":
+            self.empty_queues()
         elif event.button.id.startswith("mute_"):
             stem_index = int(event.button.id.split("_")[1])
             self.toggle_mute(stem_index)
@@ -429,6 +434,11 @@ class StreamSeparatorTUI(App):
         
         self.save_config()
         self.notify("All volumes reset to 100%")
+    
+    def empty_queues(self) -> None:
+        """Request emptying of audio processing queues."""
+        self.config.request_empty_queues()
+        self.notify("Queue emptying requested")
     
     def toggle_mute(self, stem_index: int) -> None:
         """Toggle mute state for a stem."""

@@ -41,6 +41,8 @@ class Args:
     device: str
     watch: bool
     gui: bool
+    empty_queues_requested: str | None = None
+    queues_last_emptied_at: str | None = None
 
     config_dir: str | None = dataclasses.field(default=None, repr=False, compare=False)
     config_path: str | None = dataclasses.field(default=None, repr=False, compare=False)
@@ -181,7 +183,9 @@ class Args:
             config_dir=config_dir,
             config_path=config_json_path,
             watch=watch,
-            observer=observer
+            observer=observer,
+            empty_queues_requested=config_args.empty_queues_requested,
+            queues_last_emptied_at=config_args.queues_last_emptied_at
         )
         logging.info(f"Configuration: {combined}")
 
@@ -207,15 +211,25 @@ class Args:
 
     def save(self):
         try:
+            observer = self.observer
+            self.observer = None  # Temporarily remove observer for serialization
             data = dataclasses.asdict(self)
+            self.observer = observer
+
             del data['config_dir']
             del data['config_path']
             del data['observer']
             with open(self.config_path, 'w') as f:
                 json.dump(data, f, indent=4)
-            logging.info(f"Saved config to {self.config_path}")
+            logging.info(f"Saved config {data} to {self.config_path}")
         except Exception as e:
             logging.error(f"Failed to save config to {self.config_path}: {e}")
+    
+    def request_empty_queues(self):
+        """Request queue emptying by setting the timestamp."""
+        import datetime
+        self.empty_queues_requested = datetime.datetime.now().isoformat()
+        self.save()
 
     def join(self):
         if self.observer is not None:

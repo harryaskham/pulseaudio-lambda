@@ -15,6 +15,31 @@ from ui.stream_separator_ui import run as run_ui
 from chunk import Chunk
 from buffer_hs_tasnet import BufferHSTasNet, SampleSpec
 
+def check_and_empty_queues(args, input_queue, output_queue):
+    """Check if queue emptying was requested and empty queues if needed."""
+
+    if args.empty_queues_requested and args.empty_queues_requested != args.queues_last_emptied_at:
+        # Empty both queues
+        while not input_queue.empty():
+            try:
+                input_queue.get_nowait()
+            except:
+                break
+        
+        while not output_queue.empty():
+            try:
+                output_queue.get_nowait()
+            except:
+                break
+        
+        # Update the timestamp
+        args.queues_last_emptied_at = args.empty_queues_requested
+        args.save()
+        
+        logging.info(f"Emptied queues at {args.queues_last_emptied_at}")
+        return True
+    return False
+
 def audio_input_thread(input_queue, sample_spec):
     try:
         last_input_audio_tensor = None
@@ -73,6 +98,11 @@ def audio_inference_thread(input_queue, output_queue, sample_spec):
 
     while True:
         args = Args.get_live()
+        
+        # Check if queue emptying was requested
+        if check_and_empty_queues(args, input_queue, output_queue):
+            # Skip processing for this iteration if queues were emptied
+            continue
 
         move_model = False
         if args.device != loaded_device:
