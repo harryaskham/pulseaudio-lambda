@@ -1,4 +1,4 @@
-{ packages, config, lib, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 rec {
   default = cpu;

@@ -92,7 +92,7 @@
         };
         pulseaudio-lambda = pkgs.symlinkJoin {
           name = "pulseaudio-lambda";
-          paths = with pkgs.rocmPackages; [
+          paths = [
             pulseaudio-lambda-cli
             pulseaudio-lambda-module
           ];

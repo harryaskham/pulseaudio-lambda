@@ -81,55 +81,28 @@
           ];
         });
 
-        pythonSet = (pkgs.callPackage pyproject-nix.build.packages {
-          inherit python;
-        }).overrideScope overlay;
-
-
-        pal-stem-separator-venv = pythonSet.mkVirtualEnv "pal-stem-separator-venv" { inherit python; };
-
-        util = pkgs.callPackage pyproject-nix.build.util {};
-
-        pal-stem-separator-app = util.mkApplication {
-          venv = pal-stem-separator-venv;
-          package = pythonSet.pulseaudio-lambda-stem-separator;
-        };
-
-        pal-stem-separator = pythonEnv.pkgs.buildPythonPackage
-          (project.renderers.buildPythonPackage { inherit python; });
-      in {
+        pal-stem-separator =
+          let arg = project.renderers.buildPythonPackage { inherit python; };
+          in pythonEnv.pkgs.buildPythonPackage (arg // {
+            buildInputs = (arg.buildInputs or []) ++ (with pkgs; [
+              pkg-config
+              jo
+              jq
+              libffi
+              openssl
+              stdenv.cc.cc
+              stdenv.cc.cc.lib
+              gcc.cc
+              zlib
+              zlib.dev
+              portaudio
+            ]);
+          });
+      in rec {
         packages = rec {
           default = pal-stem-separator;
           inherit pal-stem-separator;
-          inherit pal-stem-separator-app;
         };
+        devShells = pkgs.callPackage ./shells {};
       });
 }
-
-        #project = pyproject-nix.lib.project.loadPyproject {
-        #  projectRoot = ./.;
-        #};
-        #hacks = pkgs.callPackage pyproject-nix.build.hacks {};
-        #overlay = final: prev: {
-        #  torch = hacks.nixpkgsPrebuilt {
-        #    from = pkgs.python3Packages.torchWithoutCuda;
-        #    prev = prev.torch;
-        #  };
-        #  #inherit hs-tasnet;
-        #};
-
-        #pythonSet = (pkgs.callPackage pyproject-nix.build.packages {
-        #  inherit python;
-        #}).overrideScope overlay;
-
-        ## Returns an attribute set that can be passed to `buildPythonPackage`.
-        #attrs = project.renderers.buildPythonPackage { inherit python; };
-        #pulseaudio-lambda-stem-separator = python.pkgs.buildPythonPackage (attrs // {
-        #  env.CUSTOM_ENVVAR = "hello";
-        #});
-      #in {
-      #  packages = {
-      #    default = pulseaudio-lambda-stem-separator;
-      #    inherit pulseaudio-lambda-stem-separator;
-      #  };
-      #});
