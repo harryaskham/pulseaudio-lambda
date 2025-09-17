@@ -105,8 +105,6 @@
           '';
         };
 
-        pal-stem-separator-pkg;
-
         pulseaudio-lambda = pkgs.symlinkJoin {
           name = "pulseaudio-lambda";
           paths = [
