@@ -30,6 +30,8 @@ class MainActivity : AppCompatActivity() {
             val state = intent.getStringExtra("state") ?: "IDLE"
             val modelLoaded = intent.getBooleanExtra("modelLoaded", false)
             val modelLoadMs = intent.getLongExtra("modelLoadMs", 0)
+            val modelName = intent.getStringExtra("modelName") ?: "separation.pt"
+            val modelBytes = intent.getLongExtra("modelBytes", 0)
             val processedFrames = intent.getLongExtra("processedFrames", 0)
             val lastInferenceMs = intent.getLongExtra("lastInferenceMs", 0)
             val error = intent.getStringExtra("error")
@@ -37,7 +39,13 @@ class MainActivity : AppCompatActivity() {
             val sampleRate = 44100.0
             val seconds = processedFrames / sampleRate
             val latencyText = if (lastInferenceMs > 0) String.format("%d ms/chunk", lastInferenceMs) else "-"
-            val modelText = if (modelLoaded) String.format("Model: loaded (%.0f ms)", modelLoadMs.toDouble()) else "Model: not loaded"
+            val mb = if (modelBytes > 0) modelBytes.toDouble() / (1024.0 * 1024.0) else 0.0
+            val modelText = if (modelLoaded)
+                String.format("Model: %s (%.1f MB) loaded (%.0f ms)", modelName, mb, modelLoadMs.toDouble())
+            else if (modelBytes > 0)
+                String.format("Model: %s (%.1f MB) not loaded", modelName, mb)
+            else
+                "Model: not loaded"
             val statusText = if (!error.isNullOrBlank()) "Status: Error - $error" else "Status: $state"
 
             binding.status.text = statusText

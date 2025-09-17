@@ -105,6 +105,8 @@
           '';
         };
 
+        pal-stem-separator-pkg;
+
         pulseaudio-lambda = pkgs.symlinkJoin {
           name = "pulseaudio-lambda";
           paths = [
@@ -127,6 +129,7 @@
         packages = {
           default = pulseaudio-lambda;
           inherit pulseaudio-lambda pulseaudio-lambda-cli pulseaudio-lambda-module;
+          pal-stem-separator = pal-stem-separator-pkg;
         };
       in {
         inherit packages;

@@ -21,6 +21,8 @@ class StemEngine(private val context: Context) {
     data class Metrics(
         var modelLoaded: Boolean = false,
         var modelLoadMs: Long = 0,
+        var modelName: String = "",
+        var modelBytes: Long = 0,
         var totalProcessedFrames: Long = 0,
         var lastInferenceMs: Long = 0,
         var error: String? = null,
@@ -61,6 +63,8 @@ class StemEngine(private val context: Context) {
             return false
         }
         val file = java.io.File(path)
+        metrics.modelName = modelName
+        metrics.modelBytes = file.length()
         if (!file.exists() || file.length() < 1024 * 10) {
             metrics.error = "Model asset invalid: ${file.length()} bytes at ${file.name}"
             listener?.onMetrics(state, metrics)
@@ -314,9 +318,12 @@ class StemEngine(private val context: Context) {
 
     private fun assetFilePath(assetName: String): String {
         val file = java.io.File(context.filesDir, assetName)
-        if (file.exists() && file.length() > 0) return file.absolutePath
+        // Always refresh copy from APK asset to avoid stale LFS pointers from previous installs.
+        // If asset is missing, this will throw and be handled by caller.
         context.assets.open(assetName).use { input ->
-            java.io.FileOutputStream(file).use { output -> input.copyTo(output) }
+            java.io.FileOutputStream(file, false).use { output ->
+                input.copyTo(output)
+            }
         }
         return file.absolutePath
     }

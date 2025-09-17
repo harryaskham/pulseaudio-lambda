@@ -14,6 +14,10 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1"
+        ndk {
+            // Limit to 64-bit which most devices require; reduces APK size.
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildFeatures {
@@ -28,6 +32,11 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+
+    // Avoid compressing large model assets so first-run copy is faster
+    androidResources {
+        noCompress += setOf("pt", "ptl")
+    }
 }
 
 dependencies {
@@ -40,6 +49,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
     // PyTorch mobile runtime
-    implementation("org.pytorch:pytorch_android:1.12.2")
-    implementation("org.pytorch:pytorch_android_torchvision:1.12.2")
+    // Upgrade to PyTorch Android 2.1 for newer ops like aten::rms_norm
+    implementation("org.pytorch:pytorch_android:2.1.0")
 }

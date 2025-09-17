@@ -42,6 +42,8 @@ class StemService : Service() {
                     putExtra("state", state.name)
                     putExtra("modelLoaded", metrics.modelLoaded)
                     putExtra("modelLoadMs", metrics.modelLoadMs)
+                    putExtra("modelName", metrics.modelName)
+                    putExtra("modelBytes", metrics.modelBytes)
                     putExtra("processedFrames", metrics.totalProcessedFrames)
                     putExtra("lastInferenceMs", metrics.lastInferenceMs)
                     putExtra("error", metrics.error)
