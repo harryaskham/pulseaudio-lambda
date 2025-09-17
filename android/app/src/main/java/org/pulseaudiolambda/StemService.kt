@@ -20,6 +20,7 @@ class StemService : Service() {
         const val ACTION_START = "org.pulseaudiolambda.action.START"
         const val ACTION_STOP = "org.pulseaudiolambda.action.STOP"
         const val ACTION_SET_VOLUME = "org.pulseaudiolambda.action.SET_VOLUME"
+        const val ACTION_STATUS = "org.pulseaudiolambda.action.STATUS"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
         const val EXTRA_STEM = "stem"
@@ -34,6 +35,20 @@ class StemService : Service() {
     override fun onCreate() {
         super.onCreate()
         engine = StemEngine(this)
+        engine.setListener(object : StemEngine.Listener {
+            override fun onMetrics(state: StemEngine.State, metrics: StemEngine.Metrics) {
+                val intent = Intent(ACTION_STATUS).apply {
+                    `package` = packageName
+                    putExtra("state", state.name)
+                    putExtra("modelLoaded", metrics.modelLoaded)
+                    putExtra("modelLoadMs", metrics.modelLoadMs)
+                    putExtra("processedFrames", metrics.totalProcessedFrames)
+                    putExtra("lastInferenceMs", metrics.lastInferenceMs)
+                    putExtra("error", metrics.error)
+                }
+                sendBroadcast(intent)
+            }
+        })
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification("Idle"))
     }

@@ -31,10 +31,13 @@
           
           buildInputs = with pkgs; [
             makeWrapper
-            pulseaudioFull
           ];
 
-          propagatedBuildInputs = [ pal-stem-separator-pkg ];
+          propagatedBuildInputs = with pkgs; [
+            pal-stem-separator-pkg
+            pulseaudioFull
+            pulseaudioFull.dev
+          ];
 
           buildPhase = ''
             ls -la

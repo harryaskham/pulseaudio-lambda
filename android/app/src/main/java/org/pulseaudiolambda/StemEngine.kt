@@ -18,6 +18,18 @@ class StemEngine(private val context: Context) {
 
     enum class State { IDLE, RUNNING }
 
+    data class Metrics(
+        var modelLoaded: Boolean = false,
+        var modelLoadMs: Long = 0,
+        var totalProcessedFrames: Long = 0,
+        var lastInferenceMs: Long = 0,
+        var error: String? = null,
+    )
+
+    interface Listener {
+        fun onMetrics(state: State, metrics: Metrics)
+    }
+
     private val volumes = mutableMapOf(
         Stem.DRUMS to 1f,
         Stem.BASS to 1f,
@@ -28,6 +40,10 @@ class StemEngine(private val context: Context) {
     private var module: Module? = null
     private var job: Job? = null
     @Volatile private var state: State = State.IDLE
+    @Volatile private var listener: Listener? = null
+    private val metrics = Metrics()
+
+    fun setListener(l: Listener?) { listener = l }
 
     fun setVolume(stem: Stem, volume: Float) { volumes[stem] = volume.coerceIn(0f, 1f) }
 
@@ -37,11 +53,16 @@ class StemEngine(private val context: Context) {
         if (state == State.RUNNING) return true
 
         // Load TorchScript module from assets -> files dir
+        val loadStart = android.os.SystemClock.elapsedRealtime()
         module = try {
             Module.load(assetFilePath("separation.pt"))
         } catch (t: Throwable) {
+            metrics.error = t.message ?: "Model load failed"
             null
         }
+        metrics.modelLoaded = module != null
+        metrics.modelLoadMs = android.os.SystemClock.elapsedRealtime() - loadStart
+        listener?.onMetrics(state, metrics)
         if (module == null) return false
 
         val sampleRate = 44100
@@ -98,6 +119,7 @@ class StemEngine(private val context: Context) {
             recorder.startRecording()
             player.play()
             state = State.RUNNING
+            listener?.onMetrics(state, metrics)
             try {
                 // Sliding window buffers
                 val windowL = FloatArray(chunkSize)
@@ -131,7 +153,9 @@ class StemEngine(private val context: Context) {
                         System.arraycopy(windowL, 0, chunkL, overlap, chunkSize - overlap)
                         System.arraycopy(windowR, 0, chunkR, overlap, chunkSize - overlap)
 
+                        val inferStart = android.os.SystemClock.elapsedRealtime()
                         val out = processStereo(chunkL, chunkR)
+                        metrics.lastInferenceMs = android.os.SystemClock.elapsedRealtime() - inferStart
 
                         // Output only hop size (exclude the leading overlap)
                         val hop = chunkSize - overlap
@@ -156,10 +180,13 @@ class StemEngine(private val context: Context) {
                         System.arraycopy(windowR, hop, windowR, 0, pendingR - hop)
                         pendingL -= hop
                         pendingR -= hop
+                        metrics.totalProcessedFrames += hop.toLong()
+                        listener?.onMetrics(state, metrics)
                     }
                 }
             } finally {
                 state = State.IDLE
+                listener?.onMetrics(state, metrics)
                 try { recorder.stop() } catch (_: Throwable) {}
                 try { player.stop() } catch (_: Throwable) {}
                 recorder.release()

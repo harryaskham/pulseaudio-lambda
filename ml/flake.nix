@@ -41,29 +41,6 @@
         # Base Python interpreter
         python = pkgs.python3;
 
-        hs-tasnet = (pkgs.python3Packages.buildPythonPackage {
-          pname = "hs_tasnet";
-          version = "0.2.29";
-          format = "wheel";
-          src = pkgs.fetchPypi {
-            pname = "hs_tasnet";
-            version = "0.2.29";
-            format = "wheel";
-            sha256 = "sha256-J1cNtyIPlmMlEO3rYgcyH7kzv7Yl0sayL0KYhs1sl8U=";
-            dist = "py3";
-            python = "py3";
-          };
-        });
-        #}).overrideAttrs (old: {
-        #  propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ (with pkgs; [
-        #    ninja
-        #    ffmpeg
-        #    ffmpeg.lib
-        #    portaudio
-        #  ]);
-        #});
-
-
         hacks = pkgs.callPackage pyproject-nix.build.hacks {};
         pyprojectOverlay = final: prev:
           let
@@ -75,30 +52,10 @@
             };
             allFromNixpkgs = names: lib.mergeAttrsList (map fromNixpkgs names);
           in {
+            # Special case: tkinter is part of Python stdlib but needs special handling
             tkinter = python.pkgs.tkinter;
-            torch = hacks.nixpkgsPrebuilt {
-              from = python.pkgs.torchWithoutCuda;
-              prev = prev.torch.overrideAttrs(old: {
-                passthru = old.passthru // {
-                  dependencies = lib.filterAttrs (name: _: ! lib.hasPrefix "nvidia" name) old.passthru.dependencies;
-                };
-              });
-            };
-            torchcodec = prev.torchcodec.overrideAttrs (old: {
-              nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
-              propagatedBuildInputs = (old.buildInputs or []) ++ [
-                pkgs.ffmpeg 
-                python.pkgs.torch
-                pkgs.stdenv.cc.cc.lib
-              ];
-              autoPatchelfIgnoreMissingDeps = true;
-            });
-            sounddevice = prev.sounddevice.overrideAttrs (old: {
-              nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
-              propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ [
-                pkgs.portaudio
-              ];
-            });
+            
+            # Patch stempeg to find ffmpeg binaries
             stempeg = prev.stempeg.overrideAttrs (old: {
               postInstall = (old.postInstall or "") + ''
                 if [ -f $out/lib/python*/site-packages/stempeg/cmds.py ]; then
@@ -108,22 +65,51 @@
                 fi
               '';
             });
-          } // allFromNixpkgs [
-            "numba"
-            "torchaudio"
-            "torchvision"
+            
+            # Ignore missing CUDA dependencies for PyTorch ecosystem
+            torch = prev.torch.overrideAttrs (old: {
+              autoPatchelfIgnoreMissingDeps = true;
+            });
+            torchaudio = prev.torchaudio.overrideAttrs (old: {
+              autoPatchelfIgnoreMissingDeps = true;
+            });
+            torchcodec = prev.torchcodec.overrideAttrs (old: {
+              autoPatchelfIgnoreMissingDeps = true;
+            });
+            sounddevice = prev.sounddevice.overrideAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
+              buildInputs = (old.buildInputs or []) ++ [ pkgs.portaudio ];
+              postInstall = (old.postInstall or "") + ''
+                # Patch sounddevice to find portaudio
+                substituteInPlace $out/lib/python*/site-packages/sounddevice.py \
+                  --replace "_find_library('portaudio')" "'${pkgs.portaudio}/lib/libportaudio.so'"
+              '';
+            });
+            numba = prev.numba.overrideAttrs (old: { 
+              autoPatchelfIgnoreMissingDeps = true; 
+            });
+            
+            # Ignore all NVIDIA/CUDA packages
+          } // (lib.genAttrs [
+            "nvidia-cublas-cu12"
+            "nvidia-cuda-cupti-cu12"
+            "nvidia-cuda-nvrtc-cu12"
+            "nvidia-cuda-runtime-cu12"
+            "nvidia-cudnn-cu12"
+            "nvidia-cufft-cu12"
+            "nvidia-cufile-cu12"
+            "nvidia-curand-cu12"
+            "nvidia-cusolver-cu12"
+            "nvidia-cusparse-cu12"
+            "nvidia-cusparselt-cu12"
+            "nvidia-nccl-cu12"
+            "nvidia-nvjitlink-cu12"
+            "nvidia-nvtx-cu12"
             "triton"
-            #"einops"
-            "sounddevice"
-            #"soundfile"
-            #"accelerate"
-            #"scipy"
-            #"scikit-learn"
-            #"matplotlib"
-            #"loguru"
-            #"matplotlib"
-            #"librosa"
-            #"einx"
+          ] (name: prev.${name}.overrideAttrs (old: {
+            autoPatchelfIgnoreMissingDeps = true;
+          }))) // allFromNixpkgs [
+            "tkinter"
           ];
 
         pythonBase = pkgs.callPackage pyproject-nix.build.packages {

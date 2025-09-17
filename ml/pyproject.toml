@@ -10,36 +10,21 @@ requires-python = ">=3.13"
 dependencies = [
     "torch==2.8.0",
     "torchaudio==2.8.0",
-    "torchcodec>=0.7.0",
     "HS-TasNet>=0.2.29",
     "fire",
     "wandb",
     "termplotlib",
     "watchdog",
     "textual>=0.40.0", # For TUI interface
-    "einops>=0.8.0",
-    "accelerate",
-    "sounddevice>=0.4.0",
-    "soundfile>=0.10.0",
-    "stempeg>=0.2.0",
-    "musdb>=0.4.0",
-    "loguru>=0.6.0",
-    "matplotlib>=3.5.0",
-    "librosa>=0.10.0",
-    "einx>=0.1.0",
-    "ema-pytorch>=0.2.0"
 ]
 
-#[[tool.uv.index]]
-#name = "pytorch-index"
-#url = "https://download.pytorch.org/whl/cpu"
-#explicit = true
-#
-#[tool.uv.sources]
-#torch = [{ index = "pytorch-index" }]
-#torchaudio = [{ index = "pytorch-index" }]
-#torchvision = [{ index = "pytorch-index" }]
-#triton = [{ index = "pytorch-index" }]
+# CPU-only PyTorch would be ideal but uv2nix has issues with the +cpu suffix
+# [[tool.uv.index]]
+# name = "pytorch-cpu"
+# url = "https://download.pytorch.org/whl/cpu"
+# [tool.uv.sources]
+# torch = { index = "pytorch-cpu" }
+# torchaudio = { index = "pytorch-cpu" }
 
 [project.scripts]
 pal-stem-separator = "app.main:main"

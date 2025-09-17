@@ -5,6 +5,47 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <!-- Status Panel -->
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Status: Idle"
+        android:textStyle="bold"
+        android:paddingBottom="8dp" />
+
+    <TextView
+        android:id="@+id/model"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Model: -" />
+
+    <TextView
+        android:id="@+id/processed"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Processed: 0 s" />
+
+    <TextView
+        android:id="@+id/latency"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Latency: -" />
+
+    <Button
+        android:id="@+id/startStop"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Start"
+        android:layout_marginTop="8dp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#CCCCCC"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
