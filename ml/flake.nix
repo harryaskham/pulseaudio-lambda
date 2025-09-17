@@ -41,6 +41,29 @@
         # Base Python interpreter
         python = pkgs.python3;
 
+        hs-tasnet = (pkgs.python3Packages.buildPythonPackage {
+          pname = "hs_tasnet";
+          version = "0.2.29";
+          format = "wheel";
+          src = pkgs.fetchPypi {
+            pname = "hs_tasnet";
+            version = "0.2.29";
+            format = "wheel";
+            sha256 = "sha256-J1cNtyIPlmMlEO3rYgcyH7kzv7Yl0sayL0KYhs1sl8U=";
+            dist = "py3";
+            python = "py3";
+          };
+        });
+        #}).overrideAttrs (old: {
+        #  propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ (with pkgs; [
+        #    ninja
+        #    ffmpeg
+        #    ffmpeg.lib
+        #    portaudio
+        #  ]);
+        #});
+
+
         hacks = pkgs.callPackage pyproject-nix.build.hacks {};
         pyprojectOverlay = final: prev:
           let
@@ -52,19 +75,6 @@
             };
             allFromNixpkgs = names: lib.mergeAttrsList (map fromNixpkgs names);
           in {
-            hs-tasnet = pkgs.python3Packages.buildPythonPackage {
-              pname = "hs_tasnet";
-              version = "0.2.29";
-              format = "wheel";
-              src = pkgs.fetchPypi {
-                pname = "hs_tasnet";
-                version = "0.2.29";
-                format = "wheel";
-                sha256 = "sha256-J1cNtyIPlmMlEO3rYgcyH7kzv7Yl0sayL0KYhs1sl8U=";
-                dist = "py3";
-                python = "py3";
-              };
-            };
             tkinter = python.pkgs.tkinter;
             torch = hacks.nixpkgsPrebuilt {
               from = python.pkgs.torchWithoutCuda;
@@ -76,7 +86,7 @@
             };
             torchcodec = prev.torchcodec.overrideAttrs (old: {
               nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
-              buildInputs = (old.buildInputs or []) ++ [ 
+              propagatedBuildInputs = (old.buildInputs or []) ++ [
                 pkgs.ffmpeg 
                 python.pkgs.torch
                 pkgs.stdenv.cc.cc.lib
@@ -85,7 +95,7 @@
             });
             sounddevice = prev.sounddevice.overrideAttrs (old: {
               nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
-              buildInputs = (old.buildInputs or []) ++ [ 
+              propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ [
                 pkgs.portaudio
               ];
             });
@@ -103,17 +113,17 @@
             "torchaudio"
             "torchvision"
             "triton"
-            "einops"
+            #"einops"
             "sounddevice"
-            "soundfile"
-            "accelerate"
-            "scipy"
-            "scikit-learn"
-            "matplotlib"
-            "loguru"
-            "matplotlib"
-            "librosa"
-            "einx"
+            #"soundfile"
+            #"accelerate"
+            #"scipy"
+            #"scikit-learn"
+            #"matplotlib"
+            #"loguru"
+            #"matplotlib"
+            #"librosa"
+            #"einx"
           ];
 
         pythonBase = pkgs.callPackage pyproject-nix.build.packages {
@@ -192,11 +202,12 @@
               propagatedBuildInputs = with pkgs; [
                 ffmpeg
                 ffmpeg.lib
+                portaudio
               ];
               postBuild = ''
                 wrapProgram $out/bin/pal-stem-separator \
                   --set PYTHONPATH "${pkgs.python3Packages.tkinter}/${python.sitePackages}:$PYTHONPATH" \
-                  --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib" \
+                  --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib:${pkgs.portaudio}/lib" \
                   --prefix PATH : "${pkgs.ffmpeg}/bin"
               '';
             };
