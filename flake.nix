@@ -104,16 +104,16 @@
           paths = [
             pulseaudio-lambda-cli
           ];
-          buildInputs = with pkgs; [
-            makeWrapper
-          ];
+          buildInputs = [ pkgs.makeWrapper ];
           propagatedBuildInputs = with pkgs; [
             ffmpeg
+            ffmpeg.lib
             pal-stem-separator-pkg
           ];
           postBuild = ''
             wrapProgram $out/bin/pulseaudio-lambda \
               --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib"
+              --prefix PATH : "${pkgs.ffmpeg}/bin"
           '';
         };
 

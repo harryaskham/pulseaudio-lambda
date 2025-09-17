@@ -182,6 +182,7 @@
               buildInputs = [ pkgs.makeWrapper ];
               propagatedBuildInputs = with pkgs; [
                 ffmpeg
+                ffmpeg.lib
               ];
               postBuild = ''
                 wrapProgram $out/bin/pal-stem-separator \
