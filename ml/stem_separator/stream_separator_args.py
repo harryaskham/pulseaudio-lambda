@@ -10,7 +10,7 @@ import threading
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from stream_separator_utils import expand_path
+from stem_separator.stream_separator_utils import expand_path
 
 # Live global args singletons for auto-refresh
 _args = None  # Global to hold parsed args

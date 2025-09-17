@@ -14,7 +14,7 @@ from textual.message import Message
 import asyncio
 import time
 
-from stream_separator_args import Args
+from stem_separator.stream_separator_args import Args
 
 class Slider(Widget):
     """A custom slider widget with mouse support."""

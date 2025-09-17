@@ -10,7 +10,7 @@ let
 in {
   pkgs ? import <nixpkgs> {},
   pythonConfig ? {
-    project = builtins.pathExists ../ml/pyproject.toml;
+    project = builtins.pathExists ../pyproject.toml;
     package = pkgs.python313;
     venvType = venvTypeUv;
     indexUrl = "https://download.pytorch.org/whl/rocm6.4";
@@ -86,6 +86,7 @@ let
   # Acceleration-specific setup
   acceleration = {
     null = {};
+    cpu = {};
 
     ${accelerationTypeROCm} = {
       packages = with pkgs; [

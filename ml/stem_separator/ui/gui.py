@@ -8,7 +8,7 @@ from tkinter import ttk, messagebox, filedialog
 import os
 import time
 
-from stream_separator_args import Args
+from stem_separator.stream_separator_args import Args
 
 class StreamSeparatorGUI:
     """GUI for stream separator configuration."""
