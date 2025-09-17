@@ -11,8 +11,8 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         
-        pulseaudio-lambda = pkgs.stdenv.mkDerivation {
-          pname = "pulseaudio-lambda";
+        pulseaudio-lambda-cli = pkgs.stdenv.mkDerivation {
+          pname = "pulseaudio-lambda-cli";
           version = "0.1.0";
           
           src = ./.;
@@ -62,34 +62,47 @@
             pkg-config
             gcc
             gnumake
-          ];
-          
-          buildInputs = with pkgs; [
+            pkg-config
             pulseaudioFull
             pulseaudioFull.dev
           ];
           
+          preConfigure = ''
+            tar -xvf ${pkgs.pulseaudioFull.src}
+            mv pulseaudio-* pulseaudio-src
+            chmod +w -Rv pulseaudio-src
+            cp ${pkgs.pulseaudioFull.dev}/include/pulse/config.h pulseaudio-src
+            appendToVar configureFlags "PULSE_DIR=$(realpath ./pulseaudio-src)"
+          '';
+          
           buildPhase = ''
-            # Set PA_CFLAGS to include pulsecore headers
-            export PA_CFLAGS="$(pkg-config --cflags libpulse) -I${pkgs.pulseaudioFull.dev}/include/pulsecore -I${pkgs.pulseaudioFull.dev}/include"
+            export PA_CFLAGS="$(pkg-config --cflags libpulse) -I$PULSE_DIR/include/pulsecore -I$PULSE_DIR/include"
             make module-lambda.so
           '';
           
           installPhase = ''
             runHook preInstall
-            
-            mkdir -p $out/lib/pulse-${pkgs.pulseaudioFull.version}/modules
-            cp module-lambda.so $out/lib/pulse-${pkgs.pulseaudioFull.version}/modules/
-            
+
+            mkdir -p $out/lib/pulseaudio/modules $out/libexec/pulsaudio-lambda-module $out/etc/xdg/autostart
+            cp module-lambda.so $out/lib/pulseaudio/modules/
+            install -m 755 module-lambda.so $out/lib/pulseaudio/modules/
+
             runHook postInstall
           '';
         };
-      in {
+        pulseaudio-lambda = pkgs.symlinkJoin {
+          name = "pulseaudio-lambda";
+          paths = with pkgs.rocmPackages; [
+            pulseaudio-lambda-cli
+            pulseaudio-lambda-module
+          ];
+        };
         packages = {
           default = pulseaudio-lambda;
-          binary = pulseaudio-lambda;
-          module = pulseaudio-lambda-module;
+          inherit pulseaudio-lambda pulseaudio-lambda-cli pulseaudio-lambda-module;
         };
-        devShells = pkgs.callPackage ./shells { inherit pulseaudio-lambda; };
+      in {
+        inherit packages;
+        devShells = pkgs.callPackage ./shells { inherit packages; };
       });
 }

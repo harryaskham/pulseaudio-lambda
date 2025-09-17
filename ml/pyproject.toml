@@ -1,3 +1,5 @@
+tool.uv.package = true
+
 [project]
 name = "pulseaudio-lambda-ml"
 version = "0.0.1"
@@ -10,7 +12,6 @@ requires-python = ">=3.13"
 dependencies = [
     "torch==2.8.0",
     "torchaudio==2.8.0",
-    "torchcodec",
     "triton>=2.8.0",
     "accelerate>=1.10.0",
     "numba>=0.57.0",
@@ -23,20 +24,30 @@ dependencies = [
     "textual>=0.40.0", # For TUI interface
 ]
 
-[[tool.uv.index]]
-name = "pytorch-rocm"
-url = "https://download.pytorch.org/whl/rocm6.4"
-explicit = true
+#[[tool.uv.index]]
+#url = "https://download.pytorch.org/whl/rocm6.4"
+
+#[[tool.uv.index]]
+#name = "pytorch-rocm"
+#url = "https://download.pytorch.org/whl/rocm6.4"
+#explicit = true
+
+#[[tool.uv.index]]
+#url = "https://download.pytorch.org/whl/rocm6.4"
 
 # env | rg "(HIP|HCC|HSA|GPUS|ROCM|FLASH)"
-[tool.uv.extra-build-variables]
-flash-attn = {HCC_AMDGPU_TARGET = "gfx1100", HIP_VISIBLE_DEVICES = "0,1", HSA_OVERRIDE_GFX_VERSION = "11.0.0", GPUS_ARCH = "gfx1100", PYTORCH_ROCM_ARCH = "gfx1100" }
+#[tool.uv.extra-build-variables]
+#flash-attn = {HCC_AMDGPU_TARGET = "gfx1100", HIP_VISIBLE_DEVICES = "0,1", HSA_OVERRIDE_GFX_VERSION = "11.0.0", GPUS_ARCH = "gfx1100", PYTORCH_ROCM_ARCH = "gfx1100" }
 
-[tool.uv.sources]
-torch = [{ index = "pytorch-rocm" }]
-torchaudio = [{ index = "pytorch-rocm" }]
-torchvision = [{ index = "pytorch-rocm" }]
-triton = [{ index = "pytorch-rocm" }]
+#[tool.uv.sources]
+#torch = [{ index = "pytorch-rocm" }]
+#torchaudio = [{ index = "pytorch-rocm" }]
+#torchvision = [{ index = "pytorch-rocm" }]
+#triton = [{ index = "pytorch-rocm" }]
+
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[project.scripts]
+pal-stem-separator = "stream_separator:main"

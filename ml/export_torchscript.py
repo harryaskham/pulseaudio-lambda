@@ -6,45 +6,6 @@ import logging
 import inspect
 from pathlib import Path
 
-def _install_torchcodec_stubs():
-    """Install lightweight stubs for torchcodec to avoid loading native deps during export.
-    Many training environments import torchcodec for I/O, but exporting the model graph
-    does not require codec functionality. This prevents failures when FFmpeg libs are absent.
-    """
-    try:
-        import torchcodec  # type: ignore
-        return  # Already installed; let it work if available
-    except Exception:
-        pass
-
-    import types, sys
-    tc = types.ModuleType("torchcodec")
-    tc.encoders = types.ModuleType("torchcodec.encoders")
-    tc.decoders = types.ModuleType("torchcodec.decoders")
-    tc.samplers = types.ModuleType("torchcodec.samplers")
-    tc._core = types.ModuleType("torchcodec._core")
-    tc._core.ops = types.ModuleType("torchcodec._core.ops")
-
-    # Minimal placeholder APIs used by some libs
-    class _Dummy: pass
-    tc.encoders.AudioEncoder = _Dummy
-    tc.decoders.AudioDecoder = _Dummy
-    tc._core.AudioStreamMetadata = _Dummy
-    tc._core.VideoStreamMetadata = _Dummy
-    tc._core.StreamMetadata = _Dummy
-    tc._core.ContainerMetadata = _Dummy
-
-    def load_torchcodec_shared_libraries():
-        return None
-    tc._core.ops.load_torchcodec_shared_libraries = load_torchcodec_shared_libraries
-
-    sys.modules["torchcodec"] = tc
-    sys.modules["torchcodec.encoders"] = tc.encoders
-    sys.modules["torchcodec.decoders"] = tc.decoders
-    sys.modules["torchcodec.samplers"] = tc.samplers
-    sys.modules["torchcodec._core"] = tc._core
-    sys.modules["torchcodec._core.ops"] = tc._core.ops
-
 def _install_sounddevice_stub():
     try:
         import sounddevice  # type: ignore
@@ -65,7 +26,6 @@ def _install_sounddevice_stub():
 
 def load_model_from_checkpoint(hparams):
     # Avoid importing heavy native deps that aren't needed for export
-    _install_torchcodec_stubs()
     _install_sounddevice_stub()
     from hs_tasnet import HSTasNet
 

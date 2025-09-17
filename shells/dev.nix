@@ -1,7 +1,7 @@
-{ pulseaudio-lambda, config, lib, pkgs, ... }:
+{ packages, config, lib, pkgs, ... }:
 
 pkgs.mkShell {
-  inputsFrom = [ pulseaudio-lambda ];
+  inputsFrom = [ packages.default ];
 
   packages = with pkgs; [
     # Development tools
