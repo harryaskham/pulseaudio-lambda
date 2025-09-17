@@ -43,10 +43,15 @@ class StemService : Service() {
             ACTION_START -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
-                    val data = intent.getParcelableExtra(EXTRA_RESULT_DATA, android.content.Intent::class.java)
+                    val dataIntent = if (Build.VERSION.SDK_INT >= 33) {
+                        intent.getParcelableExtra(EXTRA_RESULT_DATA, android.content.Intent::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(EXTRA_RESULT_DATA) as? android.content.Intent
+                    }
                     val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
-                    val projection: MediaProjection? = if (code == android.app.Activity.RESULT_OK && data != null) mgr.getMediaProjection(code, data) else null
-                    val ok = projection?.let { engine.start(it) } ?: false
+                    val projection: MediaProjection? = if (code == android.app.Activity.RESULT_OK && dataIntent != null) mgr.getMediaProjection(code, dataIntent) else null
+                    val ok = try { projection?.let { engine.start(it) } ?: false } catch (_: Throwable) { false }
                     updateNotification(if (ok) "Running" else "Model load failed")
                 } else updateNotification("Requires Android 10+")
             }

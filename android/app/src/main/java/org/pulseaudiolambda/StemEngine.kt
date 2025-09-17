@@ -86,8 +86,8 @@ class StemEngine(private val context: Context) {
             .setBufferSizeInBytes(minBufBytes)
             .build()
 
-        val chunkSize = 4096 // samples per channel per chunk
-        val overlap = 512     // overlap samples per chunk
+        val chunkSize = 8192 // samples per channel per chunk (must match TorchScript trace example length)
+        val overlap = 1024   // overlap samples per chunk
         val frameSize = 2 /*bytes*/ * 2 /*stereo*/
 
         job = scope.launch(Dispatchers.Default) {
@@ -184,7 +184,7 @@ class StemEngine(private val context: Context) {
         System.arraycopy(right, 0, inputArray, t, t)
         val input = Tensor.fromBlob(inputArray, longArrayOf(1, 2, t.toLong()))
 
-        val iv = module?.forward(IValue.from(input)) ?: return Pair(left, right)
+        val iv = try { module?.forward(IValue.from(input)) } catch (_: Throwable) { null } ?: return Pair(left, right)
 
         // Expected model output: [1, 4, 2, T] (batch, stems, channels, time)
         // Mix by applying per‑stem volume on dim-1 and summing over stems → [1, 2, T] → stereo [2, T].
