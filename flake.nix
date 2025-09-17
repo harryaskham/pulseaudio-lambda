@@ -37,6 +37,9 @@
             pal-stem-separator-pkg
             pulseaudioFull
             pulseaudioFull.dev
+            ffmpeg
+            ffmpeg.lib
+            portaudio
           ];
 
           buildPhase = ''
