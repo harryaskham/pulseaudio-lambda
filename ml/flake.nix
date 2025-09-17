@@ -38,28 +38,8 @@
         inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
 
-        hs-tasnet =
-          let
-            pname = "hs_tasnet";
-            version = "0.2.29";
-            format = "wheel";
-          in pkgs.python3Packages.buildPythonPackage {
-            pname = "hs_tasnet";
-            inherit version format;
-            src = pkgs.fetchPypi rec {
-              inherit pname version format;
-              sha256 = "sha256-J1cNtyIPlmMlEO3rYgcyH7kzv7Yl0sayL0KYhs1sl8U=";
-              dist = python;
-              python = "py3";
-            };
-          };
-
-        python = pkgs.python3.override {
-          packageOverrides = self: super: {
-            inherit hs-tasnet;
-            inherit (pkgs.python3Packages) tkinter;
-          };
-        };
+        # Base Python interpreter
+        python = pkgs.python3;
 
         hacks = pkgs.callPackage pyproject-nix.build.hacks {};
         pyprojectOverlay = final: prev:
@@ -72,8 +52,20 @@
             };
             allFromNixpkgs = names: lib.mergeAttrsList (map fromNixpkgs names);
           in {
-            inherit hs-tasnet;
-            inherit (pkgs.python3Packages) tkinter;
+            hs-tasnet = pkgs.python3Packages.buildPythonPackage {
+              pname = "hs_tasnet";
+              version = "0.2.29";
+              format = "wheel";
+              src = pkgs.fetchPypi {
+                pname = "hs_tasnet";
+                version = "0.2.29";
+                format = "wheel";
+                sha256 = "sha256-J1cNtyIPlmMlEO3rYgcyH7kzv7Yl0sayL0KYhs1sl8U=";
+                dist = "py3";
+                python = "py3";
+              };
+            };
+            tkinter = python.pkgs.tkinter;
             torch = hacks.nixpkgsPrebuilt {
               from = python.pkgs.torchWithoutCuda;
               prev = prev.torch.overrideAttrs(old: {
@@ -178,11 +170,21 @@
         packages =
           let
             inherit (pkgs.callPackages pyproject-nix.build.util { }) mkApplication;
-          in rec {
-            default = pal-stem-separator;
-            pal-stem-separator = mkApplication {
+            app = mkApplication {
               venv = pal-stem-separator-venv;
               package = pythonSet.pal-stem-separator;
+            };
+          in rec {
+            default = pal-stem-separator;
+            pal-stem-separator = pkgs.symlinkJoin {
+              name = "pal-stem-separator";
+              paths = [ app ];
+              buildInputs = [ pkgs.makeWrapper ];
+              postBuild = ''
+                wrapProgram $out/bin/pal-stem-separator \
+                  --set PYTHONPATH "${pkgs.python3Packages.tkinter}/${python.sitePackages}:$PYTHONPATH" \
+                  --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib"
+              '';
             };
           };
       });

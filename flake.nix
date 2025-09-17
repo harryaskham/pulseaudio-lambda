@@ -4,13 +4,16 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    pal-stem-separator = "path:./ml";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, pal-stem-separator, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        
+
+        pal-stem-separator-pkg = pal-stem-separator.packages.${system}.default;
+
         pulseaudio-lambda-cli = pkgs.stdenv.mkDerivation {
           pname = "pulseaudio-lambda-cli";
           version = "0.1.0";
@@ -27,7 +30,9 @@
             makeWrapper
             pulseaudioFull
           ];
-          
+
+          propagatedBuildInputs = [ pal-stem-separator-pkg ];
+
           buildPhase = ''
             ls -la
             ls -la src/
