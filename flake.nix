@@ -112,7 +112,8 @@
           ];
           postBuild = ''
             wrapProgram $out/bin/pulseaudio-lambda \
-              --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib"
+              --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib" \
+              --prefix PATH : "${pkgs.ffmpeg}/bin"
           '';
         };
 
