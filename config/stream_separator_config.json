@@ -1,6 +1,6 @@
 {
     "checkpoint": "$PA_LAMBDA_DIR/ml/experiments/over30s/checkpoints/hs-tasnet.ckpt.50.pt",
-    "chunk_secs": 1.0024144869215292,
+    "chunk_secs": 4.970715630885122,
     "overlap_secs": 0.22288261515601784,
     "gains": [
         100.0,
@@ -15,15 +15,15 @@
         false
     ],
     "soloed": [
+        false,
+        false,
         true,
-        false,
-        false,
         false
     ],
-    "normalize": true,
+    "normalize": false,
     "device": "cpu",
     "watch": true,
     "gui": true,
-    "empty_queues_requested": "2025-09-16T22:57:41.872084",
-    "queues_last_emptied_at": "2025-09-16T22:57:41.872084"
+    "empty_queues_requested": "2025-09-17T23:13:25.616930",
+    "queues_last_emptied_at": "2025-09-17T23:13:25.616930"
 }

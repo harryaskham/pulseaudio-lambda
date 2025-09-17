@@ -79,10 +79,12 @@
             sounddevice = prev.sounddevice.overrideAttrs (old: {
               nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
               buildInputs = (old.buildInputs or []) ++ [ pkgs.portaudio ];
+              # Create a symlink in a standard location that ctypes.util.find_library will find
               postInstall = (old.postInstall or "") + ''
-                # Patch sounddevice to find portaudio
-                substituteInPlace $out/lib/python*/site-packages/sounddevice.py \
-                  --replace "_find_library('portaudio')" "'${pkgs.portaudio}/lib/libportaudio.so'"
+                # Create a directory for the library
+                mkdir -p $out/lib
+                ln -s ${pkgs.portaudio}/lib/libportaudio.so $out/lib/libportaudio.so.2
+                ln -s ${pkgs.portaudio}/lib/libportaudio.so $out/lib/libportaudio.so
               '';
             });
             numba = prev.numba.overrideAttrs (old: { 
@@ -181,22 +183,26 @@
             };
           in rec {
             default = pal-stem-separator;
-            pal-stem-separator = pkgs.symlinkJoin {
-              name = "pal-stem-separator";
-              paths = [ app ];
+            pal-stem-separator = pkgs.runCommand "pal-stem-separator" {
               buildInputs = [ pkgs.makeWrapper ];
-              propagatedBuildInputs = with pkgs; [
-                ffmpeg
-                ffmpeg.lib
-                portaudio
-              ];
-              postBuild = ''
-                wrapProgram $out/bin/pal-stem-separator \
-                  --set PYTHONPATH "${pkgs.python3Packages.tkinter}/${python.sitePackages}:$PYTHONPATH" \
-                  --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib:${pkgs.portaudio}/lib" \
-                  --prefix PATH : "${pkgs.ffmpeg}/bin"
-              '';
-            };
+            } ''
+              mkdir -p $out/bin
+              
+              # Create a wrapper script that preloads portaudio
+              cat > $out/bin/pal-stem-separator << 'EOF'
+              #!/usr/bin/env bash
+              export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              export PATH="${pkgs.ffmpeg}/bin''${PATH:+:$PATH}"
+              export PYTHONPATH="${pkgs.python3Packages.tkinter}/${python.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
+              
+              # Preload portaudio so sounddevice can find it
+              export LD_PRELOAD="${pkgs.portaudio}/lib/libportaudio.so.2''${LD_PRELOAD:+:$LD_PRELOAD}"
+              
+              exec ${app}/bin/pal-stem-separator "$@"
+              EOF
+              
+              chmod +x $out/bin/pal-stem-separator
+            '';
           };
       });
 }

@@ -54,10 +54,22 @@ class StemEngine(private val context: Context) {
 
         // Load TorchScript module from assets -> files dir
         val loadStart = android.os.SystemClock.elapsedRealtime()
+        val modelName = "separation.pt"
+        val path = try { assetFilePath(modelName) } catch (t: Throwable) {
+            metrics.error = "Missing asset: $modelName"
+            listener?.onMetrics(state, metrics)
+            return false
+        }
+        val file = java.io.File(path)
+        if (!file.exists() || file.length() < 1024 * 10) {
+            metrics.error = "Model asset invalid: ${file.length()} bytes at ${file.name}"
+            listener?.onMetrics(state, metrics)
+            return false
+        }
         module = try {
-            Module.load(assetFilePath("separation.pt"))
+            Module.load(path)
         } catch (t: Throwable) {
-            metrics.error = t.message ?: "Model load failed"
+            metrics.error = (t.message ?: "Model load failed")
             null
         }
         metrics.modelLoaded = module != null
