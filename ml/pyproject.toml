@@ -1,7 +1,4 @@
 tool.uv.package = true
-[build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
 
 [project]
 name = "pulseaudio-lambda-stem-separator"
@@ -39,8 +36,13 @@ torchaudio = [{ index = "pytorch-index" }]
 torchvision = [{ index = "pytorch-index" }]
 triton = [{ index = "pytorch-index" }]
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
 [project.scripts]
-pal-stem-separator = "pal_stem_separator:main_cli"
+pal-stem-separator = "app.main:main"
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "app"

@@ -85,17 +85,24 @@
           inherit python;
         }).overrideScope overlay;
 
-        venv = pythonEnv.pkgs.buildPythonPackage
-          (project.renderers.buildPythonPackage { inherit python; });
 
-        pal-stem-separator = {
-          type = "app";
-          program = "${venv}/bin/pal-stem-separator";
+        pal-stem-separator-venv = pythonSet.mkVirtualEnv "pal-stem-separator-venv" { inherit python; };
+
+        util = pkgs.callPackage pyproject-nix.build.util {};
+
+        pal-stem-separator-app = util.mkApplication {
+          venv = pal-stem-separator-venv;
+          package = pythonSet.pulseaudio-lambda-stem-separator;
         };
 
+        pal-stem-separator = pythonEnv.pkgs.buildPythonPackage
+          (project.renderers.buildPythonPackage { inherit python; });
       in {
-        packages = {inherit venv; default = venv;};
-        apps = {inherit pal-stem-separator; default = pal-stem-separator;};
+        packages = rec {
+          default = pal-stem-separator;
+          inherit pal-stem-separator;
+          inherit pal-stem-separator-app;
+        };
       });
 }
 

@@ -989,7 +989,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pulseaudio-lambda-ml"
+name = "pulseaudio-lambda-stem-separator"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
@@ -1018,8 +1018,8 @@ requires-dist = [
     { name = "numba", specifier = ">=0.57.0" },
     { name = "termplotlib" },
     { name = "textual", specifier = ">=0.40.0" },
-    { name = "torch", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torchaudio", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torchaudio", specifier = ">=2.8.0a0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "triton", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "wandb" },
     { name = "watchdog" },
