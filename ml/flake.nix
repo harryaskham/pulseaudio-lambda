@@ -186,7 +186,8 @@
               postBuild = ''
                 wrapProgram $out/bin/pal-stem-separator \
                   --set PYTHONPATH "${pkgs.python3Packages.tkinter}/${python.sitePackages}:$PYTHONPATH" \
-                  --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib"
+                  --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib" \
+                  --prefix PATH : "${pkgs.ffmpeg}/bin"
               '';
             };
           };
