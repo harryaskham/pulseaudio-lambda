@@ -185,6 +185,11 @@
             default = pal-stem-separator;
             pal-stem-separator = pkgs.runCommand "pal-stem-separator" {
               buildInputs = [ pkgs.makeWrapper ];
+              propagatedBuildInputs = with pkgs; [
+                portaudio
+                ffmpeg
+                ffmpeg.lib
+              ];
             } ''
               mkdir -p $out/bin
               
