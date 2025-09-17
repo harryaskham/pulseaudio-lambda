@@ -111,11 +111,12 @@
           propagatedBuildInputs = with pkgs; [
             ffmpeg
             ffmpeg.lib
+            portaudio
             pal-stem-separator-pkg
           ];
           postBuild = ''
             wrapProgram $out/bin/pulseaudio-lambda \
-              --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib" \
+              --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib:${pkgs.portaudio}/lib" \
               --prefix PATH : "${pkgs.ffmpeg}/bin"
           '';
         };
