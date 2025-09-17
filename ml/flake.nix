@@ -89,6 +89,15 @@
                 pkgs.portaudio
               ];
             });
+            stempeg = prev.stempeg.overrideAttrs (old: {
+              postInstall = (old.postInstall or "") + ''
+                if [ -f $out/lib/python*/site-packages/stempeg/cmds.py ]; then
+                  substituteInPlace $out/lib/python*/site-packages/stempeg/cmds.py \
+                    --replace 'FFMPEG_PATH = None' 'FFMPEG_PATH = "${pkgs.ffmpeg}/bin/ffmpeg"' \
+                    --replace 'FFPROBE_PATH = None' 'FFPROBE_PATH = "${pkgs.ffmpeg}/bin/ffprobe"'
+                fi
+              '';
+            });
           } // allFromNixpkgs [
             "numba"
             "torchaudio"
