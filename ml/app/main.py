@@ -9,11 +9,11 @@ import logging
 import threading
 import queue
 
-from stem_separator.stream_separator_args import Args
-from stem_separator.stream_separator_utils import expand_path
-from stem_separator.ui.stream_separator_ui import run as run_ui
-from stem_separator.chunk import Chunk
-from stem_separator.buffer_hs_tasnet import BufferHSTasNet, SampleSpec
+from pal_stem_separator.stream_separator_args import Args
+from pal_stem_separator.stream_separator_utils import expand_path
+from pal_stem_separator.ui.stream_separator_ui import run as run_ui
+from pal_stem_separator.chunk import Chunk
+from pal_stem_separator.buffer_hs_tasnet import BufferHSTasNet, SampleSpec
 
 def check_and_empty_queues(args, input_queue, output_queue):
     """Check if queue emptying was requested and empty queues if needed."""
