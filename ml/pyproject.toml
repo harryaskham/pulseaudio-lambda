@@ -1,7 +1,10 @@
 tool.uv.package = true
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "pulseaudio-lambda-ml"
+name = "pulseaudio-lambda-stem-separator"
 version = "0.0.1"
 authors = [
   { name="Harry Askham", email="harryaskham@gmail.com" },
@@ -10,8 +13,8 @@ description = "ML models for use as PulseAudio Lambdas"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "torch==2.8.0",
-    "torchaudio==2.8.0",
+    "torch>=2.8.0",
+    "torchaudio>=2.8.0a0",
     "triton>=2.8.0",
     "accelerate>=1.10.0",
     "numba>=0.57.0",
@@ -24,30 +27,20 @@ dependencies = [
     "textual>=0.40.0", # For TUI interface
 ]
 
-#[[tool.uv.index]]
+[[tool.uv.index]]
+name = "pytorch-index"
+url = "https://download.pytorch.org/whl/cpu"
 #url = "https://download.pytorch.org/whl/rocm6.4"
+explicit = true
 
-#[[tool.uv.index]]
-#name = "pytorch-rocm"
-#url = "https://download.pytorch.org/whl/rocm6.4"
-#explicit = true
-
-#[[tool.uv.index]]
-#url = "https://download.pytorch.org/whl/rocm6.4"
-
-# env | rg "(HIP|HCC|HSA|GPUS|ROCM|FLASH)"
-#[tool.uv.extra-build-variables]
-#flash-attn = {HCC_AMDGPU_TARGET = "gfx1100", HIP_VISIBLE_DEVICES = "0,1", HSA_OVERRIDE_GFX_VERSION = "11.0.0", GPUS_ARCH = "gfx1100", PYTORCH_ROCM_ARCH = "gfx1100" }
-
-#[tool.uv.sources]
-#torch = [{ index = "pytorch-rocm" }]
-#torchaudio = [{ index = "pytorch-rocm" }]
-#torchvision = [{ index = "pytorch-rocm" }]
-#triton = [{ index = "pytorch-rocm" }]
-
+[tool.uv.sources]
+torch = [{ index = "pytorch-index" }]
+torchaudio = [{ index = "pytorch-index" }]
+torchvision = [{ index = "pytorch-index" }]
+triton = [{ index = "pytorch-index" }]
 
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 
 [project.scripts]
-pal-stem-separator = "stream_separator:main"
+pal-stem-separator = "pal_stem_separator:main_cli"

@@ -37,54 +37,68 @@
       let
         inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
-        python = pkgs.python3;
-        workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
-        overlay = workspace.mkPyprojectOverlay {
-          sourcePreference = "sdist";
-        };
-        hacks = pkgs.callPackage pyproject-nix.build.hacks {};
-        pyprojectOverrides = _final: _prev: {
-          #inherit hs-tasnet;
-          torch = hacks.nixpkgsPrebuilt {
-            from = pkgs.python3Packages.torchWithoutCuda;
-            prev = _prev.torch;
+
+        hs-tasnet =
+          let
+            pname = "hs_tasnet";
+            version = "0.2.29";
+            format = "wheel";
+          in pkgs.python3Packages.buildPythonPackage {
+            pname = "hs_tasnet";
+            inherit version format;
+            src = pkgs.fetchPypi rec {
+              inherit pname version format;
+              sha256 = "sha256-J1cNtyIPlmMlEO3rYgcyH7kzv7Yl0sayL0KYhs1sl8U=";
+              dist = python;
+              python = "py3";
+            };
+          };
+
+        python = pkgs.python3.override {
+          packageOverrides = self: super: {
+            inherit hs-tasnet;
           };
         };
-        pythonSet =
-          (pkgs.callPackage pyproject-nix.build.packages {
-            inherit python;
-          }).overrideScope
-            (
-              lib.composeManyExtensions [
-                pyproject-build-systems.overlays.default
-                overlay
-                pyprojectOverrides
-              ]
-            );
-        pulseaudio-lambda-pal-stem-separator-venv =
-          pythonSet.mkVirtualEnv "pulseaudio-lambda-pal-stem-separator-venv" workspace.deps.default;
-      in {
-        packages.default = pulseaudio-lambda-pal-stem-separator-venv;
-        apps.default = {
-          type = "app";
-          program = "${pulseaudio-lambda-pal-stem-separator-venv}/bin/pal-stem-separator";
+
+        hacks = pkgs.callPackage pyproject-nix.build.hacks {};
+        overlay = final: prev: {
+          torch = hacks.nixpkgsPrebuilt {
+            from = python.pkgs.torchWithoutCuda;
+            prev = prev.torch.overrideAttrs(old: {
+              passthru = old.passthru // {
+                dependencies = lib.filterAttrs (name: _: ! lib.hasPrefix "nvidia" name) old.passthru.dependencies;
+              };
+            });
+          };
         };
-        # Devshell still managed by parent flake
-        # TODO: move here
-        #devShells = {};
+        project = pyproject-nix.lib.project.loadPyproject {
+          projectRoot = ./.;
+        };
+        pythonEnv = python.withPackages (project.renderers.withPackages {
+          inherit python;
+          extraPackages = _: [
+            hs-tasnet
+          ];
+        });
+
+        pythonSet = (pkgs.callPackage pyproject-nix.build.packages {
+          inherit python;
+        }).overrideScope overlay;
+
+        venv = pythonEnv.pkgs.buildPythonPackage
+          (project.renderers.buildPythonPackage { inherit python; });
+
+        pal-stem-separator = {
+          type = "app";
+          program = "${venv}/bin/pal-stem-separator";
+        };
+
+      in {
+        packages = {inherit venv; default = venv;};
+        apps = {inherit pal-stem-separator; default = pal-stem-separator;};
       });
 }
 
-        #hs-tasnet =
-        #  let version = "0.2.29";
-        #  in pkgs.python3Packages.toPythonPackage {
-        #    src = pkgs.fetchFromGitHub {
-        #      owner = "lucidrains";
-        #      repo = "HS-TasNet";
-        #      rev = "refs/tags/${version}";
-        #      hash = "sha256-vtYSOfUmOvULLBULtabL15D82QxC2I00RbvCDrCoI3w=";
-        #    };
-        #  };
         #project = pyproject-nix.lib.project.loadPyproject {
         #  projectRoot = ./.;
         #};

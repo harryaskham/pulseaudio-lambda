@@ -292,7 +292,7 @@ def process_chunk(args, model, chunk):
 def run_ui_thread():
     run_ui("gui")
 
-def main():
+def main_cli():
     """Main processing loop."""
     args = Args.get_live()
 
