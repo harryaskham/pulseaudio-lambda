@@ -82,11 +82,37 @@
                 };
               });
             };
+            torchcodec = prev.torchcodec.overrideAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
+              buildInputs = (old.buildInputs or []) ++ [ 
+                pkgs.ffmpeg 
+                python.pkgs.torch
+                pkgs.stdenv.cc.cc.lib
+              ];
+              autoPatchelfIgnoreMissingDeps = true;
+            });
+            sounddevice = prev.sounddevice.overrideAttrs (old: {
+              nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
+              buildInputs = (old.buildInputs or []) ++ [ 
+                pkgs.portaudio
+              ];
+            });
           } // allFromNixpkgs [
             "numba"
             "torchaudio"
             "torchvision"
             "triton"
+            "einops"
+            "sounddevice"
+            "soundfile"
+            "accelerate"
+            "scipy"
+            "scikit-learn"
+            "matplotlib"
+            "loguru"
+            "matplotlib"
+            "librosa"
+            "einx"
           ];
 
         pythonBase = pkgs.callPackage pyproject-nix.build.packages {
@@ -109,9 +135,7 @@
 
         pal-stem-separator-venv =
           pythonSet.mkVirtualEnv "pal_stem_separator"
-            (workspace.deps.default // {
-              torch = [];
-            });
+            workspace.deps.default;
       in {
         devShells = {
           default = pkgs.mkShell {
@@ -153,23 +177,13 @@
 
         packages =
           let
-            pname = "pal-stem-separator";
-            version = "0.1.0";
             inherit (pkgs.callPackages pyproject-nix.build.util { }) mkApplication;
-          in lib.fix (self: {
-            default = self.${pname};
-            ${pname} = mkApplication {
+          in rec {
+            default = pal-stem-separator;
+            pal-stem-separator = mkApplication {
               venv = pal-stem-separator-venv;
               package = pythonSet.pal-stem-separator;
             };
-          });
-
-        apps = rec  {
-          default = pal-stem-separator-app;
-          pal-stem-separator-app = {
-            type = "app";
-            program = "${self.packages.${system}.pal-stem-separator}/bin/pal-stem-separator-launcher";
           };
-        };
       });
 }
