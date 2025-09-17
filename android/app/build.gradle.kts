@@ -35,7 +35,7 @@ android {
 
     // Avoid compressing large model assets so first-run copy is faster
     androidResources {
-        noCompress += setOf("pt", "ptl")
+        noCompress += setOf("pt", "ptl", "pte")
     }
 }
 

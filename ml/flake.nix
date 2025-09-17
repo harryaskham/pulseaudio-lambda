@@ -79,12 +79,11 @@
             sounddevice = prev.sounddevice.overrideAttrs (old: {
               nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
               buildInputs = (old.buildInputs or []) ++ [ pkgs.portaudio ];
-              # Create a symlink in a standard location that ctypes.util.find_library will find
               postInstall = (old.postInstall or "") + ''
-                # Create a directory for the library
-                mkdir -p $out/lib
-                ln -s ${pkgs.portaudio}/lib/libportaudio.so $out/lib/libportaudio.so.2
-                ln -s ${pkgs.portaudio}/lib/libportaudio.so $out/lib/libportaudio.so
+                # Patch sounddevice to directly use our portaudio library
+                substituteInPlace $out/lib/python*/site-packages/sounddevice.py \
+                  --replace "for _libname in (" "for _libname in ('${pkgs.portaudio}/lib/libportaudio.so.2'," \
+                  --replace "raise OSError('PortAudio library not found')" "_libname = '${pkgs.portaudio}/lib/libportaudio.so.2'"
               '';
             });
             numba = prev.numba.overrideAttrs (old: { 
