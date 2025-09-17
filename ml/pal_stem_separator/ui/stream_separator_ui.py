@@ -8,8 +8,8 @@ import sys
 import argparse
 import logging
 
-from stem_separator.ui.gui import StreamSeparatorGUI
-from stem_separator.ui.tui import StreamSeparatorTUI
+from pal_stem_separator.ui.gui import StreamSeparatorGUI
+from pal_stem_separator.ui.tui import StreamSeparatorTUI
 
 def run(mode: str):
     if mode == "auto":

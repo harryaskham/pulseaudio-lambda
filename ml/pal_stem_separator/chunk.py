@@ -4,7 +4,7 @@ import datetime
 import torch
 import logging
 
-from stem_separator.buffer_hs_tasnet import SampleSpec
+from pal_stem_separator.buffer_hs_tasnet import SampleSpec
 
 @dataclasses.dataclass
 class Chunk:

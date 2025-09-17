@@ -57,6 +57,7 @@
         python = pkgs.python3.override {
           packageOverrides = self: super: {
             inherit hs-tasnet;
+            inherit (pkgs.python3Packages) tkinter;
           };
         };
 
@@ -72,6 +73,7 @@
             allFromNixpkgs = names: lib.mergeAttrsList (map fromNixpkgs names);
           in {
             inherit hs-tasnet;
+            inherit (pkgs.python3Packages) tkinter;
             torch = hacks.nixpkgsPrebuilt {
               from = python.pkgs.torchWithoutCuda;
               prev = prev.torch.overrideAttrs(old: {
@@ -93,7 +95,6 @@
 
         workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
 
-
         overlay = workspace.mkPyprojectOverlay {
           sourcePreference = "wheel";
         };
@@ -108,7 +109,9 @@
 
         pal-stem-separator-venv =
           pythonSet.mkVirtualEnv "pal_stem_separator"
-            (workspace.deps.default // { torch = []; });
+            (workspace.deps.default // {
+              torch = [];
+            });
       in {
         devShells = {
           default = pkgs.mkShell {
@@ -124,11 +127,14 @@
               zlib
               zlib.dev
               portaudio
+              tk
             ];
 
             packages = [
               pal-stem-separator-venv
+              pkgs.python3Packages.tkinter
               pkgs.uv
+              pkgs.tk
             ];
 
             env = {
@@ -138,7 +144,8 @@
             };
 
             shellHook = ''
-              unset PYTHONPATH
+              export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${pkgs.ffmpeg.lib}/lib"
+              #unset PYTHONPATH
               export REPO_ROOT=$(git rev-parse --show-toplevel)
             '';
           };
@@ -146,52 +153,23 @@
 
         packages =
           let
+            pname = "pal-stem-separator";
+            version = "0.1.0";
             inherit (pkgs.callPackages pyproject-nix.build.util { }) mkApplication;
-          in rec {
-            pal-stem-separator = mkApplication {
+          in lib.fix (self: {
+            default = self.${pname};
+            ${pname} = mkApplication {
               venv = pal-stem-separator-venv;
-              package = pythonSet.pal_stem_separator;
+              package = pythonSet.pal-stem-separator;
             };
-            default = pal-stem-separator;
-          };
-      });
-}
-/*
-
-
-        project = pyproject-nix.lib.project.loadPyproject {
-          projectRoot = ./.;
-        };
-        pythonEnv = python.withPackages (project.renderers.withPackages {
-          inherit python;
-          extraPackages = _: [
-            hs-tasnet
-          ];
-        });
-
-        pal-stem-separator =
-          let arg = project.renderers.buildPythonPackage { inherit python; };
-          in pythonEnv.pkgs.buildPythonPackage (arg // {
-            buildInputs = (arg.buildInputs or []) ++ (with pkgs; [
-              pkg-config
-              jo
-              jq
-              libffi
-              openssl
-              stdenv.cc.cc
-              stdenv.cc.cc.lib
-              gcc.cc
-              zlib
-              zlib.dev
-              portaudio
-            ]);
           });
-      in rec {
-        packages = rec {
-          default = pal-stem-separator;
-          inherit pal-stem-separator;
+
+        apps = rec  {
+          default = pal-stem-separator-app;
+          pal-stem-separator-app = {
+            type = "app";
+            program = "${self.packages.${system}.pal-stem-separator}/bin/pal-stem-separator-launcher";
+          };
         };
-        devShells = pkgs.callPackage ./shells {};
       });
 }
-*/
