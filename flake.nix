@@ -4,7 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    pal-stem-separator = "path:./ml";
+    pal-stem-separator = {
+      url = "path:./ml";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = { self, nixpkgs, flake-utils, pal-stem-separator, ... }:
@@ -95,13 +98,25 @@
             runHook postInstall
           '';
         };
+
         pulseaudio-lambda = pkgs.symlinkJoin {
           name = "pulseaudio-lambda";
           paths = [
             pulseaudio-lambda-cli
-            pulseaudio-lambda-module
           ];
+          buildInputs = with pkgs; [
+            makeWrapper
+          ];
+          propagatedBuildInputs = with pkgs; [
+            ffmpeg
+            pal-stem-separator-pkg
+          ];
+          postBuild = ''
+            wrapProgram $out/bin/pulseaudio-lambda \
+              --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib"
+          '';
         };
+
         packages = {
           default = pulseaudio-lambda;
           inherit pulseaudio-lambda pulseaudio-lambda-cli pulseaudio-lambda-module;
