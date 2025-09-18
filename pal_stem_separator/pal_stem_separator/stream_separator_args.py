@@ -113,10 +113,8 @@ class Args:
                             help='If set, also launch the tui')
         parser.add_argument('--tui-tmux-session-name', type=str,
                             help='If set, also launch the tui in a tmux session with the given name')
-        parser.add_argument('--gui-only', action='store_true',
-                            help='If set, only launch the gui')
-        parser.add_argument('--tui-only', action='store_true',
-                            help='If set, only launch the tui')
+        parser.add_argument('--ui-only', action='store_true',
+                            help='If set, only launch the UI and exit')
 
         # Checkpoint
         parser.add_argument('--checkpoint', type=str,
@@ -219,7 +217,6 @@ class Args:
             args = cls(
                 config_dir=config_dir,
                 config_path=config_json_path,
-                observer=None,  # No observer yet, need to get 'watch' setting
                 **(json.load(f)))
             logging.info(f"Loaded config args: {args}")
             return args
@@ -233,6 +230,9 @@ class Args:
 
             del data['config_dir']
             del data['config_path']
+            del data['gui']
+            del data['tui']
+            del data['ui_only']
             del data['observer']
             with open(self.config_path, 'w') as f:
                 json.dump(data, f, indent=4)

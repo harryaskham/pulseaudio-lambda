@@ -154,6 +154,9 @@
 
             packages = [
               pal-stem-separator-venv
+              self.packages.${system}.pal-stem-separator
+              self.packages.${system}.pal-stem-separator-gui
+              self.packages.${system}.pal-stem-separator-tui
               pkgs.python3Packages.tkinter
               pkgs.uv
               pkgs.tk

@@ -354,22 +354,19 @@ class StreamSeparatorTUI(App):
         """Handle device selection change."""
         if event.radio_set.id == "device":
             self.config.device = "cuda" if event.index == 1 else "cpu"
-            if self.auto_save:
-                self.save_config_throttled()
+            self.save_config_throttled()
     
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle input field changes."""
         if event.input.id == "checkpoint":
             self.config.checkpoint = event.value
-            if self.auto_save:
-                self.save_config_throttled()
+            self.save_config_throttled()
     
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         """Handle checkbox changes."""
         if event.checkbox.id == "normalize":
             self.config.normalize = event.value
-            if self.auto_save:
-                self.save_config_throttled()
+            self.save_config_throttled()
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""

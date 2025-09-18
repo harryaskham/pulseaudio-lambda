@@ -294,9 +294,6 @@ def run_ui_thread():
     args = Args.get_live()
     if args.gui:
         run_ui("gui")
-    elif args.tui and args.ui_only:
-        logging.info("Running TUI only (no tmux)")
-        run_ui("tui")
     elif args.tui:
         logging.info(f"Running TUI in tmux session with name: {args.tui_tmux_session_name}")
         server = libtmux.Server()
@@ -315,6 +312,15 @@ def run_ui_thread():
 def main():
     """Main processing loop."""
     args = Args.get_live()
+
+    if args.ui_only:
+        if args.gui:
+            logging.info("Running GUI only")
+            run_ui("gui")
+        elif args.tui:
+            logging.info("Running TUI only (no tmux)")
+            run_ui("tui")
+        return 
 
     ui_thread = None
     if args.gui or args.tui:
