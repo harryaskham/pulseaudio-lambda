@@ -154,9 +154,7 @@
 
             packages = [
               pal-stem-separator-venv
-              self.packages.${system}.pal-stem-separator
-              self.packages.${system}.pal-stem-separator-gui
-              self.packages.${system}.pal-stem-separator-tui
+              self.packages.${system}.pal-stem-separator-all
               pkgs.python3Packages.tkinter
               pkgs.uv
               pkgs.tk
@@ -184,7 +182,15 @@
               package = pythonSet.pal-stem-separator;
             };
           in rec {
-            default = pal-stem-separator;
+            default = pal-stem-separator-all;
+            pal-stem-separator-all = pkgs.symlinkJoin {
+              name = "pal-stem-separator-all";
+              paths = [
+                pal-stem-separator
+                pal-stem-separator-gui
+                pal-stem-separator-tui
+              ];
+            };
             pal-stem-separator = pkgs.runCommand "pal-stem-separator" {
               buildInputs = [ pkgs.makeWrapper ];
               propagatedBuildInputs = with pkgs; [
