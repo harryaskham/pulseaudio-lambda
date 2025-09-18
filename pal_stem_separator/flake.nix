@@ -39,7 +39,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
 
         # Base Python interpreter
-        python = pkgs.python3;
+        python = pkgs.python312;
 
         hacks = pkgs.callPackage pyproject-nix.build.hacks {};
         pyprojectOverlay = final: prev:
@@ -67,15 +67,18 @@
             });
             
             # Ignore missing CUDA dependencies for PyTorch ecosystem
-            torch = prev.torch.overrideAttrs (old: {
-              autoPatchelfIgnoreMissingDeps = true;
-            });
-            torchaudio = prev.torchaudio.overrideAttrs (old: {
-              autoPatchelfIgnoreMissingDeps = true;
-            });
-            torchcodec = prev.torchcodec.overrideAttrs (old: {
-              autoPatchelfIgnoreMissingDeps = true;
-            });
+            #torch = prev.torch.overrideAttrs (old: {
+            #  autoPatchelfIgnoreMissingDeps = true;
+            #});
+            #torchaudio = prev.torchaudio.overrideAttrs (old: {
+            #  autoPatchelfIgnoreMissingDeps = true;
+            #});
+            #torchcodec = prev.torchcodec.overrideAttrs (old: {
+            #  autoPatchelfIgnoreMissingDeps = true;
+            #});
+            #executorch = prev.executorch.overrideAttrs (old: {
+            #  autoPatchelfIgnoreMissingDeps = true;
+            #});
             sounddevice = prev.sounddevice.overrideAttrs (old: {
               nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
               buildInputs = (old.buildInputs or []) ++ [ pkgs.portaudio ];
@@ -86,27 +89,30 @@
                   --replace "raise OSError('PortAudio library not found')" "_libname = '${pkgs.portaudio}/lib/libportaudio.so.2'"
               '';
             });
-            numba = prev.numba.overrideAttrs (old: { 
-              autoPatchelfIgnoreMissingDeps = true; 
-            });
             
-            # Ignore all NVIDIA/CUDA packages
           } // (lib.genAttrs [
-            "nvidia-cublas-cu12"
-            "nvidia-cuda-cupti-cu12"
-            "nvidia-cuda-nvrtc-cu12"
-            "nvidia-cuda-runtime-cu12"
-            "nvidia-cudnn-cu12"
-            "nvidia-cufft-cu12"
-            "nvidia-cufile-cu12"
-            "nvidia-curand-cu12"
-            "nvidia-cusolver-cu12"
-            "nvidia-cusparse-cu12"
-            "nvidia-cusparselt-cu12"
-            "nvidia-nccl-cu12"
-            "nvidia-nvjitlink-cu12"
-            "nvidia-nvtx-cu12"
-            "triton"
+            "torch"
+            "torchaudio"
+            "torchcodec"
+            #"pytorch-triton-rocm"
+            #"executorch"
+            "numba"
+            # Ignore all NVIDIA/CUDA packages
+            #"nvidia-cublas-cu12"
+            #"nvidia-cuda-cupti-cu12"
+            #"nvidia-cuda-nvrtc-cu12"
+            #"nvidia-cuda-runtime-cu12"
+            #"nvidia-cudnn-cu12"
+            #"nvidia-cufft-cu12"
+            #"nvidia-cufile-cu12"
+            #"nvidia-curand-cu12"
+            #"nvidia-cusolver-cu12"
+            #"nvidia-cusparse-cu12"
+            #"nvidia-cusparselt-cu12"
+            #"nvidia-nccl-cu12"
+            #"nvidia-nvjitlink-cu12"
+            #"nvidia-nvtx-cu12"
+            #"triton"
           ] (name: prev.${name}.overrideAttrs (old: {
             autoPatchelfIgnoreMissingDeps = true;
           }))) // allFromNixpkgs [
@@ -121,6 +127,10 @@
 
         overlay = workspace.mkPyprojectOverlay {
           sourcePreference = "wheel";
+          dependencies = {
+            pal-stem-separator = [ "rocm64" ];
+            #pal-stem-separator = [  ];
+          };
         };
 
         pythonSet = pythonBase.overrideScope (
@@ -132,8 +142,8 @@
         );
 
         pal-stem-separator-venv =
-          pythonSet.mkVirtualEnv "pal_stem_separator"
-            workspace.deps.default;
+          pythonSet.mkVirtualEnv "pal_stem_separator" workspace.deps.default;
+
       in {
         devShells = {
           default = pkgs.mkShell {

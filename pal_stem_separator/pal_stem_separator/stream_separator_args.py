@@ -52,6 +52,11 @@ class Args:
     config_path: str | None = dataclasses.field(default=None, repr=False, compare=False)
     observer: Observer | None = dataclasses.field(default=None, repr=False, compare=False)
 
+    # Export args
+    executorch_run_export: bool = dataclasses.field(default=False, repr=False, compare=False)
+    executorch_output: str | None = dataclasses.field(default="export/separation.pte", repr=False, compare=False)
+    executorch_example_len: int | None = dataclasses.field(default=8192, repr=False, compare=False)
+
     @classmethod
     def get_config_dir(cls, args=None):
         config_dir = (
@@ -140,6 +145,9 @@ class Args:
         parser.add_argument('--device', type=str,
                             help='Device to use (cuda/cpu)')
 
+        parser.add_argument("--executorch-output", default="exports/separation.pte", help="Output ExecuTorch package file (.pte)")
+        parser.add_argument("--executorch-example-len", type=int, default=8192, help="Example T dimension for export")
+
         args = parser.parse_args()
 
         # Set up logging to stderr (stdout is for audio)
@@ -198,7 +206,11 @@ class Args:
             gui=args.gui or config_args.gui,
             tui=args.tui or config_args.tui,
             ui_only=args.ui_only or config_args.ui_only,
-            tui_tmux_session_name=args.tui_tmux_session_name or config_args.tui_tmux_session_name
+            tui_tmux_session_name=args.tui_tmux_session_name or config_args.tui_tmux_session_name,
+            # Export
+            executorch_run_export=args.executorch_run_export or config_args.executorch_run_export,
+            executorch_output=args.executorch_output or config_args.executorch_output,
+            executorch_example_len=args.executorch_example_len or config_args.executorch_example_len
         )
         logging.info(f"Configuration: {combined}")
 
@@ -234,6 +246,9 @@ class Args:
             del data['tui']
             del data['ui_only']
             del data['observer']
+            del data['executorch_run_export']
+            del data['executorch_output']
+            del data['executorch_example_len']
             with open(self.config_path, 'w') as f:
                 json.dump(data, f, indent=4)
             logging.info(f"Saved config {data} to {self.config_path}")

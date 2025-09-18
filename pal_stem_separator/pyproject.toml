@@ -6,26 +6,60 @@ authors = [
 ]
 description = "ML models for use as PulseAudio Lambdas"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
-    "torch==2.8.0",
-    "torchaudio==2.8.0",
     "HS-TasNet>=0.2.29",
     "fire",
     "wandb",
     "termplotlib",
     "watchdog",
     "libtmux",
-    "textual>=0.40.0", # For TUI interface
+    "textual>=0.40.0",
 ]
 
-# CPU-only PyTorch would be ideal but uv2nix has issues with the +cpu suffix
-# [[tool.uv.index]]
-# name = "pytorch-cpu"
-# url = "https://download.pytorch.org/whl/cpu"
-# [tool.uv.sources]
-# torch = { index = "pytorch-cpu" }
-# torchaudio = { index = "pytorch-cpu" }
+[project.optional-dependencies]
+cpu = [
+  "torch>=2.8.0",
+  "torchaudio>=2.8.0",
+  "executorch>=0.7.0",
+]
+rocm64 = [
+  "torch>=2.8.0",
+  "torchaudio>=2.8.0",
+  "executorch>=0.7.0",
+  "pytorch-triton-rocm>=3.4.0",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "rocm64" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-rocm64", extra = "rocm64" },
+]
+torchaudio = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-rocm64", extra = "rocm64" },
+]
+pytorch-triton-rocm = [
+  { index = "pytorch-rocm64", extra = "rocm64" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-rocm64"
+url = "https://download.pytorch.org/whl/rocm6.4"
+explicit = true
 
 [project.scripts]
 pal-stem-separator = "app.main:main"

@@ -15,6 +15,7 @@ from pal_stem_separator.stream_separator_utils import expand_path
 from pal_stem_separator.ui.stream_separator_ui import run as run_ui
 from pal_stem_separator.chunk import Chunk
 from pal_stem_separator.buffer_hs_tasnet import BufferHSTasNet, SampleSpec
+from pal_stem_separator import export_executorch
 
 def check_and_empty_queues(args, input_queue, output_queue):
     """Check if queue emptying was requested and empty queues if needed."""
@@ -311,6 +312,13 @@ def run_ui_thread():
 
 def main():
     """Main processing loop."""
+    args = Args.read()
+
+    if args.executorch_run_export:
+        logging.info("Running Executorch export")
+        return export_executorch.run_export(args)
+
+    # Start live args watcher
     args = Args.get_live()
 
     if args.ui_only:

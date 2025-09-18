@@ -12,7 +12,7 @@ Usage example:
   python -m pal_stem_separator.export_executorch \
     --checkpoint /path/to/checkpoint.ckpt \
     --output separation.pte \
-    --stereo --example-len 8192
+    --example-len 8192
 
 Notes:
   - Input shape expected by the Android app: [1, 2, T] with T=8192 by default.
@@ -27,18 +27,13 @@ from pathlib import Path
 
 import torch
 
+from pal_stem_separator.stream_separator_args import Args
 from .export_torchscript import load_model_from_checkpoint  # reuse loader + hparam parsing
 
 
 def build_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Export checkpoint to ExecuTorch (.pte)")
     ap.add_argument("--checkpoint", required=True, help="Path to model checkpoint (.pt/.ckpt)")
-    ap.add_argument("--output", default="separation.pte", help="Output ExecuTorch package file (.pte)")
-    ap.add_argument("--stereo", action="store_true", help="Export stereo model (default true)")
-    ap.add_argument("--mono", dest="stereo", action="store_false", help="Export mono model")
-    ap.add_argument("--example-len", type=int, default=8192, help="Example T dimension for export")
-    ap.add_argument("--device", default="cpu", help="Export device for example inputs (cpu)")
-    ap.set_defaults(stereo=True)
     return ap
 
 
@@ -91,11 +86,7 @@ def export_executorch(model: torch.nn.Module, example: torch.Tensor, out_path: P
         raise RuntimeError("ExecuTorch export failed; update executorch and/or adjust API paths") from le
 
 
-def main(argv=None) -> int:
-    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
-    ap = build_argparser()
-    args = ap.parse_args(argv)
-
+def run_export(args: Args) -> int:
     # Reuse TorchScript exporter’s loader to assemble the model from a checkpoint
     logging.info("Loading model from checkpoint: %s", args.checkpoint)
     try:
@@ -104,9 +95,9 @@ def main(argv=None) -> int:
         logging.error("Failed to construct model from checkpoint: %s", e)
         return 2
 
-    c = 2 if args.stereo else 1
-    example = torch.randn(1, c, int(args.example_len), device=args.device)
-    out_path = Path(args.output)
+    num_channels = 2
+    example = torch.randn(1, num_channels, int(args.executorch_example_len), device=args.device)
+    out_path = Path(args.executorch_output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -117,8 +108,3 @@ def main(argv=None) -> int:
 
     logging.info("Export complete: %s", out_path)
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-
