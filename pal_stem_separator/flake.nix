@@ -127,11 +127,11 @@
 
         overlay = workspace.mkPyprojectOverlay {
           sourcePreference = "wheel";
-          dependencies = {
-            pal-stem-separator = [ "rocm64" ];
-            #pal-stem-separator = [  ];
-          };
         };
+          #dependencies = {
+          #  pal-stem-separator = [ "rocm64" ];
+          #  #pal-stem-separator = [  ];
+          #};
 
         pythonSet = pythonBase.overrideScope (
           lib.composeManyExtensions [
@@ -142,7 +142,9 @@
         );
 
         pal-stem-separator-venv =
-          pythonSet.mkVirtualEnv "pal_stem_separator" workspace.deps.default;
+          pythonSet.mkVirtualEnv "pal_stem_separator" (workspace.deps.default // {
+            pal-stem-separator = [ "rocm64" ];
+          });
 
       in {
         devShells = {

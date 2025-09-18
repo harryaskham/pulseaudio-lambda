@@ -2,27 +2,11 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
-    "python_full_version >= '3.13' and sys_platform == 'linux' and extra != 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version < '3.13' and sys_platform == 'linux' and extra != 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version >= '3.13' and sys_platform != 'linux' and extra != 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version < '3.13' and sys_platform != 'linux' and extra != 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64'",
-    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64') or (python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64') or (python_full_version >= '3.13' and platform_python_implementation != 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')",
-    "(python_full_version < '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64') or (python_full_version < '3.13' and platform_python_implementation != 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')",
-    "python_full_version == '3.13.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version < '3.13' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version >= '3.13' and sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version < '3.13' and sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version >= '3.13' and sys_platform == 'linux' and extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version < '3.13' and sys_platform == 'linux' and extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version >= '3.13' and sys_platform != 'linux' and extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
-    "python_full_version < '3.13' and sys_platform != 'linux' and extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64'",
+    "python_full_version >= '3.13' and sys_platform == 'linux'",
+    "python_full_version < '3.13' and sys_platform == 'linux'",
+    "python_full_version >= '3.13' and sys_platform != 'linux'",
+    "python_full_version < '3.13' and sys_platform != 'linux'",
 ]
-conflicts = [[
-    { package = "pal-stem-separator", extra = "cpu" },
-    { package = "pal-stem-separator", extra = "rocm64" },
-]]
 
 [[package]]
 name = "accelerate"
@@ -35,10 +19,7 @@ dependencies = [
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+rocm6.4", source = { registry = "https://download.pytorch.org/whl/rocm6.4" }, marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
+    { name = "torch" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b1/72/ff3961c19ee395c3d30ac630ee77bfb0e1b46b87edc504d4f83bb4a89705/accelerate-1.10.1.tar.gz", hash = "sha256:3dea89e433420e4bfac0369cae7e36dcd6a56adfcfd38cdda145c6225eab5df8", size = 392446, upload-time = "2025-08-25T13:57:06.21Z" }
 wheels = [
@@ -139,8 +120,8 @@ name = "cattrs"
 version = "25.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "attrs", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "typing-extensions", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "attrs" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e3/42/988b3a667967e9d2d32346e7ed7edee540ef1cee829b53ef80aa8d4a0222/cattrs-25.2.0.tar.gz", hash = "sha256:f46c918e955db0177be6aa559068390f71988e877c603ae2e56c71827165cc06", size = 506531, upload-time = "2025-08-31T20:41:59.301Z" }
 wheels = [
@@ -161,7 +142,7 @@ name = "cffi"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pycparser", marker = "implementation_name != 'PyPy' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "pycparser", marker = "implementation_name != 'PyPy'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/eb/56/b1ba7935a17738ae8453301356628e8147c79dbb825bcbc73dc7401f9846/cffi-2.0.0.tar.gz", hash = "sha256:44d1b5909021139fe36001ae048dbdde8214afa20200eda0f64c068cac5d5529", size = 523588, upload-time = "2025-09-08T23:24:04.541Z" }
 wheels = [
@@ -227,7 +208,7 @@ name = "click"
 version = "8.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/60/6c/8ca2efa64cf75a977a0d7fac081354553ebe483345c734fb6b6515d96bbc/click-8.2.1.tar.gz", hash = "sha256:27c491cc05d968d271d5a1db13e3b5a184636d9d930f148c50b038f0d0646202", size = 286342, upload-time = "2025-05-20T23:19:49.832Z" }
 wheels = [
@@ -314,14 +295,14 @@ name = "coremltools"
 version = "8.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "attrs", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "cattrs", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "numpy", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "packaging", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "protobuf", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "pyaml", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "sympy", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "tqdm", marker = "(sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "attrs" },
+    { name = "cattrs" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "protobuf" },
+    { name = "pyaml" },
+    { name = "sympy" },
+    { name = "tqdm" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/93/f1/322d8cb29c59b8710375927a6d776887ed4c6caafd036cf4fbe14dcdb767/coremltools-8.3.0.tar.gz", hash = "sha256:c95a6051606b71273d669b107b5f32d3191f595e6821b8db04baf49d52d0704f", size = 1642701, upload-time = "2025-04-28T20:14:06.235Z" }
 wheels = [
@@ -376,10 +357,7 @@ name = "ema-pytorch"
 version = "0.7.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+rocm6.4", source = { registry = "https://download.pytorch.org/whl/rocm6.4" }, marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
+    { name = "torch" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3c/81/c78532837a00578dfe752d0cedab3fe68f97b055c2b55a2c3962555a5eaa/ema_pytorch-0.7.7.tar.gz", hash = "sha256:ecce0e3439e03c00f95a253d6f15ada415fcab09c2c0bd15f30349d375c69ad7", size = 9762, upload-time = "2024-12-03T21:57:17.749Z" }
 wheels = [
@@ -418,9 +396,7 @@ dependencies = [
     { name = "ruamel-yaml" },
     { name = "sympy" },
     { name = "tabulate" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+rocm6.4", source = { registry = "https://download.pytorch.org/whl/rocm6.4" }, marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
+    { name = "torch" },
     { name = "torchao" },
     { name = "typing-extensions" },
 ]
@@ -604,14 +580,8 @@ dependencies = [
     { name = "musdb" },
     { name = "sounddevice" },
     { name = "soundfile" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+rocm6.4", source = { registry = "https://download.pytorch.org/whl/rocm6.4" }, marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
-    { name = "torchaudio", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.14' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (python_full_version >= '3.14' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_machine != 'aarch64' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_python_implementation != 'CPython' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torchaudio", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torchaudio", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.14' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (python_full_version < '3.14' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (platform_python_implementation != 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torchaudio", version = "2.8.0+rocm6.4", source = { registry = "https://download.pytorch.org/whl/rocm6.4" }, marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
+    { name = "torch" },
+    { name = "torchaudio" },
     { name = "torchcodec" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c8/b8/05f1c1f663b51278bb549ddc263fd3744549fe4449f00cb4b7967bee251e/hs_tasnet-0.2.29.tar.gz", hash = "sha256:cbcf823bb249eabcd59c96bd7f61e27d23c6a21b986072e8c5a73c134e043953", size = 322724, upload-time = "2025-09-08T23:39:02.788Z" }
@@ -626,7 +596,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -805,8 +775,8 @@ dependencies = [
     { name = "scipy" },
     { name = "soundfile" },
     { name = "soxr" },
-    { name = "standard-aifc", marker = "python_full_version >= '3.13' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "standard-sunau", marker = "python_full_version >= '3.13' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "standard-aifc", marker = "python_full_version >= '3.13'" },
+    { name = "standard-sunau", marker = "python_full_version >= '3.13'" },
     { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/64/36/360b5aafa0238e29758729e9486c6ed92a6f37fa403b7875e06c115cdf4a/librosa-0.11.0.tar.gz", hash = "sha256:f5ed951ca189b375bbe2e33b2abd7e040ceeee302b9bbaeeffdfddb8d0ace908", size = 327001, upload-time = "2025-03-11T15:09:54.884Z" }
@@ -858,8 +828,8 @@ name = "loguru"
 version = "0.7.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
 wheels = [
@@ -1125,48 +1095,33 @@ name = "pal-stem-separator"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "executorch" },
     { name = "fire" },
     { name = "hs-tasnet" },
     { name = "libtmux" },
+    { name = "pytorch-triton-rocm" },
     { name = "termplotlib" },
     { name = "textual" },
+    { name = "torch" },
+    { name = "torchaudio" },
     { name = "wandb" },
     { name = "watchdog" },
-]
-
-[package.optional-dependencies]
-cpu = [
-    { name = "executorch" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torchaudio", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.14' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (python_full_version >= '3.14' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_machine != 'aarch64' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_python_implementation != 'CPython' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torchaudio", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.14' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (python_full_version < '3.14' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (platform_python_implementation != 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-]
-rocm64 = [
-    { name = "executorch" },
-    { name = "pytorch-triton-rocm" },
-    { name = "torch", version = "2.8.0+rocm6.4", source = { registry = "https://download.pytorch.org/whl/rocm6.4" } },
-    { name = "torchaudio", version = "2.8.0+rocm6.4", source = { registry = "https://download.pytorch.org/whl/rocm6.4" } },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "executorch", marker = "extra == 'cpu'", specifier = ">=0.7.0" },
-    { name = "executorch", marker = "extra == 'rocm64'", specifier = ">=0.7.0" },
+    { name = "executorch", specifier = ">=0.7.0" },
     { name = "fire" },
     { name = "hs-tasnet", specifier = ">=0.2.29" },
     { name = "libtmux" },
-    { name = "pytorch-triton-rocm", marker = "extra == 'rocm64'", specifier = ">=3.4.0", index = "https://download.pytorch.org/whl/rocm6.4", conflict = { package = "pal-stem-separator", extra = "rocm64" } },
+    { name = "pytorch-triton-rocm", specifier = ">=3.4.0", index = "https://download.pytorch.org/whl/rocm6.4" },
     { name = "termplotlib" },
     { name = "textual", specifier = ">=0.40.0" },
-    { name = "torch", marker = "extra == 'cpu'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "pal-stem-separator", extra = "cpu" } },
-    { name = "torch", marker = "extra == 'rocm64'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/rocm6.4", conflict = { package = "pal-stem-separator", extra = "rocm64" } },
-    { name = "torchaudio", marker = "extra == 'cpu'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "pal-stem-separator", extra = "cpu" } },
-    { name = "torchaudio", marker = "extra == 'rocm64'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/rocm6.4", conflict = { package = "pal-stem-separator", extra = "rocm64" } },
+    { name = "torch", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/rocm6.4" },
+    { name = "torchaudio", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/rocm6.4" },
     { name = "wandb" },
     { name = "watchdog" },
 ]
-provides-extras = ["cpu", "rocm64"]
 
 [[package]]
 name = "pandas"
@@ -1465,7 +1420,7 @@ name = "pytorch-triton-rocm"
 version = "3.4.0"
 source = { registry = "https://download.pytorch.org/whl/rocm6.4" }
 dependencies = [
-    { name = "setuptools", marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
+    { name = "setuptools" },
 ]
 wheels = [
     { url = "https://download.pytorch.org/whl/pytorch_triton_rocm-3.4.0-cp312-cp312-linux_x86_64.whl", hash = "sha256:7afe951b9fc38f1a5b3a7b98bebbaa092bf51e6192b699b4fade9b1ad6fc9c2c" },
@@ -1800,8 +1755,8 @@ name = "standard-aifc"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "audioop-lts", marker = "python_full_version >= '3.13' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "standard-chunk", marker = "python_full_version >= '3.13' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
+    { name = "standard-chunk", marker = "python_full_version >= '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c4/53/6050dc3dde1671eb3db592c13b55a8005e5040131f7509cef0215212cb84/standard_aifc-3.13.0.tar.gz", hash = "sha256:64e249c7cb4b3daf2fdba4e95721f811bde8bdfc43ad9f936589b7bb2fae2e43", size = 15240, upload-time = "2024-10-30T16:01:31.772Z" }
 wheels = [
@@ -1822,7 +1777,7 @@ name = "standard-sunau"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "audioop-lts", marker = "python_full_version >= '3.13' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/66/e3/ce8d38cb2d70e05ffeddc28bb09bad77cfef979eb0a299c9117f7ed4e6a9/standard_sunau-3.13.0.tar.gz", hash = "sha256:b319a1ac95a09a2378a8442f403c66f4fd4b36616d6df6ae82b8e536ee790908", size = 9368, upload-time = "2024-10-30T16:01:41.626Z" }
 wheels = [
@@ -1911,117 +1866,17 @@ wheels = [
 
 [[package]]
 name = "torch"
-version = "2.8.0"
-source = { registry = "https://download.pytorch.org/whl/cpu" }
-resolution-markers = [
-    "python_full_version >= '3.13' and sys_platform == 'darwin'",
-    "python_full_version < '3.13' and sys_platform == 'darwin'",
-]
-dependencies = [
-    { name = "filelock", marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "fsspec", marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "jinja2", marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "networkx", marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "setuptools", marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "sympy", marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "typing-extensions", marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-]
-wheels = [
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0-cp312-none-macosx_11_0_arm64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0-cp313-cp313t-macosx_14_0_arm64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0-cp313-none-macosx_11_0_arm64.whl" },
-]
-
-[[package]]
-name = "torch"
-version = "2.8.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.13' and sys_platform == 'linux'",
-    "python_full_version < '3.13' and sys_platform == 'linux'",
-    "python_full_version >= '3.13' and sys_platform != 'linux'",
-    "python_full_version < '3.13' and sys_platform != 'linux'",
-]
-dependencies = [
-    { name = "filelock", marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "fsspec", marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "jinja2", marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "networkx", marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "setuptools", marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "sympy", marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "typing-extensions", marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/49/0c/2fd4df0d83a495bb5e54dca4474c4ec5f9c62db185421563deeb5dabf609/torch-2.8.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:e2fab4153768d433f8ed9279c8133a114a034a61e77a3a104dcdf54388838705", size = 101906089, upload-time = "2025-08-06T14:53:52.631Z" },
-    { url = "https://files.pythonhosted.org/packages/99/a8/6acf48d48838fb8fe480597d98a0668c2beb02ee4755cc136de92a0a956f/torch-2.8.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:b2aca0939fb7e4d842561febbd4ffda67a8e958ff725c1c27e244e85e982173c", size = 887913624, upload-time = "2025-08-06T14:56:44.33Z" },
-    { url = "https://files.pythonhosted.org/packages/af/8a/5c87f08e3abd825c7dfecef5a0f1d9aa5df5dd0e3fd1fa2f490a8e512402/torch-2.8.0-cp312-cp312-win_amd64.whl", hash = "sha256:2f4ac52f0130275d7517b03a33d2493bab3693c83dcfadf4f81688ea82147d2e", size = 241326087, upload-time = "2025-08-06T14:53:46.503Z" },
-    { url = "https://files.pythonhosted.org/packages/be/66/5c9a321b325aaecb92d4d1855421e3a055abd77903b7dab6575ca07796db/torch-2.8.0-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:619c2869db3ada2c0105487ba21b5008defcc472d23f8b80ed91ac4a380283b0", size = 73630478, upload-time = "2025-08-06T14:53:57.144Z" },
-    { url = "https://files.pythonhosted.org/packages/10/4e/469ced5a0603245d6a19a556e9053300033f9c5baccf43a3d25ba73e189e/torch-2.8.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:2b2f96814e0345f5a5aed9bf9734efa913678ed19caf6dc2cddb7930672d6128", size = 101936856, upload-time = "2025-08-06T14:54:01.526Z" },
-    { url = "https://files.pythonhosted.org/packages/16/82/3948e54c01b2109238357c6f86242e6ecbf0c63a1af46906772902f82057/torch-2.8.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:65616ca8ec6f43245e1f5f296603e33923f4c30f93d65e103d9e50c25b35150b", size = 887922844, upload-time = "2025-08-06T14:55:50.78Z" },
-    { url = "https://files.pythonhosted.org/packages/e3/54/941ea0a860f2717d86a811adf0c2cd01b3983bdd460d0803053c4e0b8649/torch-2.8.0-cp313-cp313-win_amd64.whl", hash = "sha256:659df54119ae03e83a800addc125856effda88b016dfc54d9f65215c3975be16", size = 241330968, upload-time = "2025-08-06T14:54:45.293Z" },
-    { url = "https://files.pythonhosted.org/packages/de/69/8b7b13bba430f5e21d77708b616f767683629fc4f8037564a177d20f90ed/torch-2.8.0-cp313-cp313t-macosx_14_0_arm64.whl", hash = "sha256:1a62a1ec4b0498930e2543535cf70b1bef8c777713de7ceb84cd79115f553767", size = 73915128, upload-time = "2025-08-06T14:54:34.769Z" },
-    { url = "https://files.pythonhosted.org/packages/15/0e/8a800e093b7f7430dbaefa80075aee9158ec22e4c4fc3c1a66e4fb96cb4f/torch-2.8.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:83c13411a26fac3d101fe8035a6b0476ae606deb8688e904e796a3534c197def", size = 102020139, upload-time = "2025-08-06T14:54:39.047Z" },
-    { url = "https://files.pythonhosted.org/packages/4a/15/5e488ca0bc6162c86a33b58642bc577c84ded17c7b72d97e49b5833e2d73/torch-2.8.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:8f0a9d617a66509ded240add3754e462430a6c1fc5589f86c17b433dd808f97a", size = 887990692, upload-time = "2025-08-06T14:56:18.286Z" },
-    { url = "https://files.pythonhosted.org/packages/b4/a8/6a04e4b54472fc5dba7ca2341ab219e529f3c07b6941059fbf18dccac31f/torch-2.8.0-cp313-cp313t-win_amd64.whl", hash = "sha256:a7242b86f42be98ac674b88a4988643b9bc6145437ec8f048fea23f72feb5eca", size = 241603453, upload-time = "2025-08-06T14:55:22.945Z" },
-    { url = "https://files.pythonhosted.org/packages/04/6e/650bb7f28f771af0cb791b02348db8b7f5f64f40f6829ee82aa6ce99aabe/torch-2.8.0-cp313-none-macosx_11_0_arm64.whl", hash = "sha256:7b677e17f5a3e69fdef7eb3b9da72622f8d322692930297e4ccb52fefc6c8211", size = 73632395, upload-time = "2025-08-06T14:55:28.645Z" },
-]
-
-[[package]]
-name = "torch"
-version = "2.8.0+cpu"
-source = { registry = "https://download.pytorch.org/whl/cpu" }
-resolution-markers = [
-    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.13' and platform_python_implementation != 'CPython' and sys_platform == 'linux')",
-    "(python_full_version < '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.13' and platform_python_implementation != 'CPython' and sys_platform == 'linux')",
-    "python_full_version == '3.13.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'",
-    "python_full_version < '3.13' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'",
-    "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
-    "python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
-]
-dependencies = [
-    { name = "filelock", marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "fsspec", marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "jinja2", marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "networkx", marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "setuptools", marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "sympy", marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "typing-extensions", marker = "(sys_platform != 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-]
-wheels = [
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp312-cp312-linux_s390x.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp312-cp312-win_amd64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp312-cp312-win_arm64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp313-cp313-linux_s390x.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp313-cp313-manylinux_2_28_aarch64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp313-cp313-win_amd64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp313-cp313-win_arm64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp313-cp313t-manylinux_2_28_aarch64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp313-cp313t-manylinux_2_28_x86_64.whl" },
-    { url = "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp313-cp313t-win_amd64.whl" },
-]
-
-[[package]]
-name = "torch"
 version = "2.8.0+rocm6.4"
 source = { registry = "https://download.pytorch.org/whl/rocm6.4" }
-resolution-markers = [
-    "python_full_version >= '3.13' and sys_platform == 'linux'",
-    "python_full_version < '3.13' and sys_platform == 'linux'",
-    "python_full_version >= '3.13' and sys_platform != 'linux'",
-    "python_full_version < '3.13' and sys_platform != 'linux'",
-]
 dependencies = [
-    { name = "filelock", marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
-    { name = "fsspec", marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
-    { name = "jinja2", marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
-    { name = "networkx", marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
-    { name = "pytorch-triton-rocm", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_machine != 'x86_64' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "setuptools", marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
-    { name = "sympy", marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
-    { name = "typing-extensions", marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
+    { name = "filelock" },
+    { name = "fsspec" },
+    { name = "jinja2" },
+    { name = "networkx" },
+    { name = "pytorch-triton-rocm", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "setuptools" },
+    { name = "sympy" },
+    { name = "typing-extensions" },
 ]
 wheels = [
     { url = "https://download.pytorch.org/whl/rocm6.4/torch-2.8.0%2Brocm6.4-cp312-cp312-manylinux_2_28_x86_64.whl" },
@@ -2040,89 +1895,10 @@ wheels = [
 
 [[package]]
 name = "torchaudio"
-version = "2.8.0"
-source = { registry = "https://download.pytorch.org/whl/cpu" }
-resolution-markers = [
-    "python_full_version == '3.13.*' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'",
-    "python_full_version < '3.13' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'",
-    "python_full_version >= '3.13' and sys_platform == 'darwin'",
-    "python_full_version < '3.13' and sys_platform == 'darwin'",
-]
-dependencies = [
-    { name = "torch", version = "2.8.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu') or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version < '3.14' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (python_full_version >= '3.14' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_machine != 'aarch64' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_python_implementation != 'CPython' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-]
-wheels = [
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:ddef94bf181e6447cbb05f38beaca8f6c5bb8d2b9ddced1aa3452025b9fc70d3" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:862e2e40bf09d865e5df080a84c1a39bbcef40e43140f4b1737eb3a389d3b38f" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f851d32e94ca05e470f0c60e25726ec1e0eb71cb2ca5a0206b7fd03272ccc3c8" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:09535a9b727c0793cd07c1ace99f3f353626281bcc3e30c2f2314e3ebc9d3f96" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:68df9c9068984edff8065c2b6656725e6114fe89281b0cf122c7505305fc98a4" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:1951f10ed092f2dda57634f6a3950ef21c9d9352551aa84a9fccd51bbda18095" },
-]
-
-[[package]]
-name = "torchaudio"
-version = "2.8.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.13' and sys_platform == 'linux'",
-    "python_full_version < '3.13' and sys_platform == 'linux'",
-    "python_full_version >= '3.13' and sys_platform != 'linux'",
-    "python_full_version < '3.13' and sys_platform != 'linux'",
-]
-dependencies = [
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (extra != 'extra-18-pal-stem-separator-cpu' and extra != 'extra-18-pal-stem-separator-rocm64')" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/cc/c2e2a3eb6ee956f73c68541e439916f8146170ea9cc61e72adea5c995312/torchaudio-2.8.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:ddef94bf181e6447cbb05f38beaca8f6c5bb8d2b9ddced1aa3452025b9fc70d3", size = 1856736, upload-time = "2025-08-06T14:58:36.3Z" },
-    { url = "https://files.pythonhosted.org/packages/c7/0d/24dad878784f1edd62862f27173781669f0c71eb46368636787d1e364188/torchaudio-2.8.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:862e2e40bf09d865e5df080a84c1a39bbcef40e43140f4b1737eb3a389d3b38f", size = 1692930, upload-time = "2025-08-06T14:58:41.312Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/a6/84d80f34472503e9eb82245d7df501c59602d75d7360e717fb9b84f91c5e/torchaudio-2.8.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:93a8583f280fe83ba021aa713319381ea71362cc87b67ee38e97a43cb2254aee", size = 4014607, upload-time = "2025-08-06T14:58:47.234Z" },
-    { url = "https://files.pythonhosted.org/packages/43/ab/96ad33afa320738a7cfb4b51ba97e2f3cfb1e04ae3115d5057655103ba4f/torchaudio-2.8.0-cp312-cp312-win_amd64.whl", hash = "sha256:4b82cacd1b8ccd543b1149d8cab257a40dfda8119023d2e3a96c66349c84bffb", size = 2499890, upload-time = "2025-08-06T14:58:55.066Z" },
-    { url = "https://files.pythonhosted.org/packages/3b/ea/2a68259c4dbb5fe44ebfdcfa40b115010d8c677221a7ef0f5577f3c4f5f1/torchaudio-2.8.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f851d32e94ca05e470f0c60e25726ec1e0eb71cb2ca5a0206b7fd03272ccc3c8", size = 1857045, upload-time = "2025-08-06T14:58:51.984Z" },
-    { url = "https://files.pythonhosted.org/packages/0d/a3/1c79a8ef29fe403b83bdfc033db852bc2a888b80c406325e5c6fb37a7f2d/torchaudio-2.8.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:09535a9b727c0793cd07c1ace99f3f353626281bcc3e30c2f2314e3ebc9d3f96", size = 1692755, upload-time = "2025-08-06T14:58:50.868Z" },
-    { url = "https://files.pythonhosted.org/packages/49/df/61941198e9ac6bcebfdd57e1836e4f3c23409308e3d8d7458f0198a6a366/torchaudio-2.8.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:d2a85b124494736241884372fe1c6dd8c15e9bc1931bd325838c5c00238c7378", size = 4013897, upload-time = "2025-08-06T14:59:01.66Z" },
-    { url = "https://files.pythonhosted.org/packages/c3/ab/7175d35a4bbc4a465a9f1388571842f16eb6dec5069d7ea9c8c2d7b5b401/torchaudio-2.8.0-cp313-cp313-win_amd64.whl", hash = "sha256:c1b5139c840367a7855a062a06688a416619f6fd2ca46d9b9299b49a7d133dfd", size = 2500085, upload-time = "2025-08-06T14:58:44.95Z" },
-    { url = "https://files.pythonhosted.org/packages/34/1a/69b9f8349d9d57953d5e7e445075cbf74000173fb5f5d5d9e9d59415fc63/torchaudio-2.8.0-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:68df9c9068984edff8065c2b6656725e6114fe89281b0cf122c7505305fc98a4", size = 1935600, upload-time = "2025-08-06T14:58:46.051Z" },
-    { url = "https://files.pythonhosted.org/packages/71/76/40fec21b65bccfdc5c8cdb9d511033ab07a7ad4b05f0a5b07f85c68279fc/torchaudio-2.8.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:1951f10ed092f2dda57634f6a3950ef21c9d9352551aa84a9fccd51bbda18095", size = 1704199, upload-time = "2025-08-06T14:58:43.594Z" },
-    { url = "https://files.pythonhosted.org/packages/8e/53/95c3363413c2f2009f805144160b093a385f641224465fbcd717449c71fb/torchaudio-2.8.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:4f7d97494698d98854129349b12061e8c3398d33bd84c929fa9aed5fd1389f73", size = 4020596, upload-time = "2025-08-06T14:59:03.031Z" },
-    { url = "https://files.pythonhosted.org/packages/52/27/7fc2d7435af044ffbe0b9b8e98d99eac096d43f128a5cde23c04825d5dcf/torchaudio-2.8.0-cp313-cp313t-win_amd64.whl", hash = "sha256:d4a715d09ac28c920d031ee1e60ecbc91e8a5079ad8c61c0277e658436c821a6", size = 2549553, upload-time = "2025-08-06T14:59:00.019Z" },
-]
-
-[[package]]
-name = "torchaudio"
-version = "2.8.0+cpu"
-source = { registry = "https://download.pytorch.org/whl/cpu" }
-resolution-markers = [
-    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (python_full_version >= '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.13' and platform_python_implementation != 'CPython' and sys_platform == 'linux')",
-    "(python_full_version < '3.13' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.13' and platform_python_implementation != 'CPython' and sys_platform == 'linux')",
-    "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
-    "python_full_version < '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'",
-]
-dependencies = [
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(python_full_version >= '3.14' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (python_full_version < '3.14' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (platform_python_implementation != 'CPython' and sys_platform == 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-18-pal-stem-separator-cpu') or (sys_platform == 'darwin' and extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
-]
-wheels = [
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0%2Bcpu-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:9377faee65a290578280ac7f4884c3586253dac2ca28c60f458ff6efe86a6b05" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0%2Bcpu-cp312-cp312-win_amd64.whl", hash = "sha256:9b302192b570657c1cc787a4d487ae4bbb7f2aab1c01b1fcc46757e7f86f391e" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:e1b1f530e8b71b1d079e23db45a0e621709061710ef8540aae8280aa039554ee" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0%2Bcpu-cp313-cp313-win_amd64.whl", hash = "sha256:0c2d081e24204768e636cbf05e1377c8a6964b8ed6fa3aa5092ba9af9bbc19c5" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0%2Bcpu-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:89c2d04fe1cb7c31eb042f7b36e1ce8e2afacf769ecd5f216527e184e4857099" },
-    { url = "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0%2Bcpu-cp313-cp313t-win_amd64.whl", hash = "sha256:ab4653da31dc37f0a643f41f4da8bee647a8686bacf12d3929cac8aead186811" },
-]
-
-[[package]]
-name = "torchaudio"
 version = "2.8.0+rocm6.4"
 source = { registry = "https://download.pytorch.org/whl/rocm6.4" }
-resolution-markers = [
-    "python_full_version >= '3.13' and sys_platform == 'linux'",
-    "python_full_version < '3.13' and sys_platform == 'linux'",
-    "python_full_version >= '3.13' and sys_platform != 'linux'",
-    "python_full_version < '3.13' and sys_platform != 'linux'",
-]
 dependencies = [
-    { name = "torch", version = "2.8.0+rocm6.4", source = { registry = "https://download.pytorch.org/whl/rocm6.4" }, marker = "extra == 'extra-18-pal-stem-separator-rocm64'" },
+    { name = "torch" },
 ]
 wheels = [
     { url = "https://download.pytorch.org/whl/rocm6.4/torchaudio-2.8.0%2Brocm6.4-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:c1ff4ec4f3db80fe7a7403e0171ce9712e61193ccf0128d4c1e160336c4a303f" },
@@ -2148,7 +1924,7 @@ name = "tqdm"
 version = "4.66.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-18-pal-stem-separator-cpu' and extra == 'extra-18-pal-stem-separator-rocm64')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/58/83/6ba9844a41128c62e810fddddd72473201f3eacde02046066142a2d96cc5/tqdm-4.66.5.tar.gz", hash = "sha256:e1020aef2e5096702d8a025ac7d16b1577279c9d63f8375b63083e9a5f0fcbad", size = 169504, upload-time = "2024-08-03T22:35:40.339Z" }
 wheels = [
