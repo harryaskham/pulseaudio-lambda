@@ -207,6 +207,14 @@
               
               chmod +x $out/bin/pal-stem-separator
             '';
+
+            pal-stem-separator-gui = pkgs.writeShellScriptBin "pal-stem-separator-gui" ''
+              exec ${pal-stem-separator}/bin/pal-stem-separator --gui --ui-only "$@"
+            '';
+
+            pal-stem-separator-tui = pkgs.writeShellScriptBin "pal-stem-separator-tui" ''
+              exec ${pal-stem-separator}/bin/pal-stem-separator --tui --ui-only "$@"
+            '';
           };
       });
 }

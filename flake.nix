@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     pal-stem-separator = {
-      url = "path:./ml";
+      url = "path:./pal-stem-separator";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

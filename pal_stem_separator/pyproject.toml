@@ -15,6 +15,7 @@ dependencies = [
     "wandb",
     "termplotlib",
     "watchdog",
+    "libtmux",
     "textual>=0.40.0", # For TUI interface
 ]
 

@@ -1,10 +1,3 @@
 .direnv/
 pulseaudio-lambda
 result
-ml/data/
-ml/__pycache__/
-ml/wandb/
-ml/experiments/
-ml/eval-results/
-ml/checkpoints/
-ml/ui/__pycache__/

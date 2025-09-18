@@ -8,6 +8,7 @@ import struct
 import logging
 import threading
 import queue
+import libtmux
 
 from pal_stem_separator.stream_separator_args import Args
 from pal_stem_separator.stream_separator_utils import expand_path
@@ -290,18 +291,44 @@ def process_chunk(args, model, chunk):
     return chunk
 
 def run_ui_thread():
-    run_ui("gui")
+    args = Args.get_live()
+    if args.gui:
+        run_ui("gui")
+    elif args.tui and args.ui_only:
+        logging.info("Running TUI only (no tmux)")
+        run_ui("tui")
+    elif args.tui:
+        logging.info(f"Running TUI in tmux session with name: {args.tui_tmux_session_name}")
+        server = libtmux.Server()
+        session = server.sessions.get(session_name=args.tui_tmux_session_name)
+        if session is None:
+            session = server.new_session(session_name=args.tui_tmux_session_name)
+        debug = " --debug" if args.debug else ""
+        command = f"{sys.executable} {sys.argv[0]} --tui --ui-only{debug}"
+        logging.debug(f"Running command in tmux: {command}")
+        session.active_window.active_pane.send_keys(command)
+        logging.info("TUI running in tmux session, exiting UI thread")
+    else:
+        logging.error("No UI mode specified")
+        sys.exit(1)
 
 def main():
     """Main processing loop."""
     args = Args.get_live()
 
     ui_thread = None
-    if args.gui:
+    if args.gui or args.tui:
         ui_thread = threading.Thread(
             target=run_ui_thread,
             daemon=True)
+        logging.info("Starting UI thread...")
         ui_thread.start()
+
+        if args.ui_only:
+            logging.debug("Only running UI (joining UI thread)")
+            ui_thread.join()
+            logging.debug("Exiting after UI thread joined")
+            return
 
     sample_spec = SampleSpec.from_env()
 

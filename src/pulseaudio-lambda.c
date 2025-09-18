@@ -349,11 +349,11 @@ static void print_usage(const char *prog) {
     printf("         -n 'Voice Processor' \\\n");
     printf("         './lambdas/identity.sh'\n");
     printf("\n");
-    printf("  # Create virtual sink 'pulseaudio-lambda-input' and use defaults:\n");
-    printf("  %s './lambdas/identity.sh'\n", prog);
+    printf("  # Create virtual sink 'pulseaudio-lambda-input' with no transformation:\n");
+    printf("  %s cat\n", prog);
     printf("\n");
     printf("  # With custom stream name:\n");
-    printf("  %s -n 'Stem Separator' './ml/stream_separator.py'\n", prog);
+    printf("  %s -n 'No Drums' 'stem-separator --gains m,s,s,s'\n", prog);
 }
 
 int main(int argc, char *argv[]) {

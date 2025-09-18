@@ -40,10 +40,14 @@ class Args:
     normalize: bool
     device: str
     watch: bool
-    gui: bool
     empty_queues_requested: str | None = None
     queues_last_emptied_at: str | None = None
+    tui_tmux_session_name: str | None = "stem_separator_tui"
 
+    # CLI-only or inferred args
+    gui: bool | None = dataclasses.field(default=False, repr=False, compare=False)
+    tui: bool | None = dataclasses.field(default=False, repr=False, compare=False)
+    ui_only: bool | None = dataclasses.field(default=False, repr=False, compare=False)
     config_dir: str | None = dataclasses.field(default=None, repr=False, compare=False)
     config_path: str | None = dataclasses.field(default=None, repr=False, compare=False)
     observer: Observer | None = dataclasses.field(default=None, repr=False, compare=False)
@@ -105,6 +109,14 @@ class Args:
 
         parser.add_argument('--gui', action='store_true',
                             help='If set, also launch the gui')
+        parser.add_argument('--tui', action='store_true',
+                            help='If set, also launch the tui')
+        parser.add_argument('--tui-tmux-session-name', type=str,
+                            help='If set, also launch the tui in a tmux session with the given name')
+        parser.add_argument('--gui-only', action='store_true',
+                            help='If set, only launch the gui')
+        parser.add_argument('--tui-only', action='store_true',
+                            help='If set, only launch the tui')
 
         # Checkpoint
         parser.add_argument('--checkpoint', type=str,
@@ -179,13 +191,16 @@ class Args:
             overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
             device=args.device if args.device is not None else config_args.device,
             normalize=args.normalize or config_args.normalize,
-            gui=args.gui or config_args.gui,
             config_dir=config_dir,
             config_path=config_json_path,
             watch=watch,
             observer=observer,
             empty_queues_requested=config_args.empty_queues_requested,
-            queues_last_emptied_at=config_args.queues_last_emptied_at
+            queues_last_emptied_at=config_args.queues_last_emptied_at,
+            gui=args.gui or config_args.gui,
+            tui=args.tui or config_args.tui,
+            ui_only=args.ui_only or config_args.ui_only,
+            tui_tmux_session_name=args.tui_tmux_session_name or config_args.tui_tmux_session_name
         )
         logging.info(f"Configuration: {combined}")
 

@@ -1,3 +1,11 @@
+data/
+__pycache__/
+wandb/
+experiments/
+eval-results/
+checkpoints/
+ui/__pycache__/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
