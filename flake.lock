@@ -63,11 +63,11 @@
         "uv2nix": "uv2nix"
       },
       "locked": {
-        "path": "./ml",
+        "path": "./pal_stem_separator",
         "type": "path"
       },
       "original": {
-        "path": "./ml",
+        "path": "./pal_stem_separator",
         "type": "path"
       },
       "parent": []
