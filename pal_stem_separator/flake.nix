@@ -83,6 +83,8 @@
             "torch"
             "torchaudio"
             "torchcodec"
+            "executorch"
+            "antlr4"
             "numba"
             #"pytorch-triton-rocm"
             #"executorch"
