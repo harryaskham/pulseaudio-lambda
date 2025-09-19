@@ -38,7 +38,7 @@
         inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
 
-        # Base Python interpreter
+        # Base Python interpreter w/ tkinter
         python = pkgs.python312;
 
         hacks = pkgs.callPackage pyproject-nix.build.hacks {};
@@ -56,6 +56,7 @@
             }));
           in {
             tkinter = python.pkgs.tkinter;
+
             # Patch stempeg to find ffmpeg binaries
             stempeg = prev.stempeg.overrideAttrs (old: {
               postInstall = (old.postInstall or "") + ''
@@ -104,8 +105,6 @@
             "nvidia-nvjitlink-cu12"
             "nvidia-nvtx-cu12"
             "triton"
-          ]) // (fromNixpkgs [
-            #"tkinter"
           ]);
 
         pythonBase = pkgs.callPackage pyproject-nix.build.packages {
@@ -129,36 +128,26 @@
         pal-stem-separator-venv =
           pythonSet.mkVirtualEnv "pal_stem_separator" workspace.deps.default;
 
-      in {
+        # Nix requires tkinter injecting back at the final stage since withPackages drops
+        # version and stdenv info needed by the rest of uv2nix
+        #interpreter = pythonSet.python.interpreter.withPackages (ps: [ps.tkinter]);
+        interpreter = pythonSet.python.withPackages (ps: [ps.tkinter]);
+
+      in rec {
         devShells = {
           default = pkgs.mkShell {
-            propagatedBuildInputs = with pkgs; [
-              pkg-config
-              jo
-              jq
-              libffi
-              openssl
-              stdenv.cc.cc
-              stdenv.cc.cc.lib
-              gcc.cc
-              zlib
-              zlib.dev
-              portaudio
-              tk
-              python.pkgs.tkinter
-            ];
+            inputsFrom = [ packages.default ];
 
             packages = [
               pal-stem-separator-venv
-              self.packages.${system}.pal-stem-separator-all
-              python.pkgs.tkinter
               pkgs.uv
               pkgs.tk
+              interpreter
             ];
 
             env = {
               UV_NO_SYNC = "1";
-              UV_PYTHON = pythonSet.python.interpreter;
+              UV_PYTHON = "${interpreter}/bin/python3.12";
               UV_PYTHON_DOWNLOADS = "never";
             };
 
@@ -178,21 +167,33 @@
               package = pythonSet.pal-stem-separator;
             };
           in rec {
-            default = pal-stem-separator-all;
-            pal-stem-separator-all = pkgs.symlinkJoin {
+            default = pal-stem-separator;
+            pal-stem-separator = pkgs.symlinkJoin {
               name = "pal-stem-separator-all";
               paths = [
-                pal-stem-separator
+                pal-stem-separator-cli
                 pal-stem-separator-gui
                 pal-stem-separator-tui
               ];
             };
-            pal-stem-separator = pkgs.runCommand "pal-stem-separator" {
+            pal-stem-separator-cli = pkgs.runCommand "pal-stem-separator" {
               buildInputs = [ pkgs.makeWrapper ];
               propagatedBuildInputs = with pkgs; [
+                interpreter
+                pkg-config
+                jo
+                jq
+                libffi
+                openssl
+                stdenv.cc.cc
+                stdenv.cc.cc.lib
+                gcc.cc
+                zlib
+                zlib.dev
                 portaudio
                 ffmpeg
                 ffmpeg.lib
+                tk
                 python.pkgs.tkinter
               ];
             } ''
@@ -215,11 +216,11 @@
             '';
 
             pal-stem-separator-gui = pkgs.writeShellScriptBin "pal-stem-separator-gui" ''
-              exec ${pal-stem-separator}/bin/pal-stem-separator --gui --ui-only "$@"
+              exec ${pal-stem-separator-cli}/bin/pal-stem-separator --gui --ui-only "$@"
             '';
 
             pal-stem-separator-tui = pkgs.writeShellScriptBin "pal-stem-separator-tui" ''
-              exec ${pal-stem-separator}/bin/pal-stem-separator --tui --ui-only "$@"
+              exec ${pal-stem-separator-cli}/bin/pal-stem-separator --tui --ui-only "$@"
             '';
           };
       });
