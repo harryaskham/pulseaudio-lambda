@@ -20,7 +20,6 @@ Notes:
   - Backend partitioning uses XNNPACK if available; otherwise saves generic ExecuTorch program.
 """
 
-import argparse
 import logging
 import sys
 from pathlib import Path
@@ -28,14 +27,7 @@ from pathlib import Path
 import torch
 
 from pal_stem_separator.stream_separator_args import Args
-from .export_torchscript import load_model_from_checkpoint  # reuse loader + hparam parsing
-
-
-def build_argparser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="Export checkpoint to ExecuTorch (.pte)")
-    ap.add_argument("--checkpoint", required=True, help="Path to model checkpoint (.pt/.ckpt)")
-    return ap
-
+from pal_stem_separator import export_torchscript
 
 def export_executorch(model: torch.nn.Module, example: torch.Tensor, out_path: Path) -> None:
     try:
@@ -90,7 +82,7 @@ def run_export(args: Args) -> int:
     # Reuse TorchScript exporter’s loader to assemble the model from a checkpoint
     logging.info("Loading model from checkpoint: %s", args.checkpoint)
     try:
-        model = load_model_from_checkpoint(args)
+        model = export_torchscript.load_model_from_checkpoint(args)
     except Exception as e:
         logging.error("Failed to construct model from checkpoint: %s", e)
         return 2

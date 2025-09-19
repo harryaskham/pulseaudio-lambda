@@ -144,6 +144,8 @@
             # Audio tools for testing
             sox
             ffmpeg
+            ffmpeg.lib
+            portaudio
             pavucontrol
 
             # Documentation

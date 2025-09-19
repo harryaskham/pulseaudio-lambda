@@ -44,17 +44,18 @@
         hacks = pkgs.callPackage pyproject-nix.build.hacks {};
         pyprojectOverlay = final: prev:
           let
-            fromNixpkgs = name: {
+            fromNixpkgs1 = name: {
               ${name} = hacks.nixpkgsPrebuilt {
                 from = python.pkgs.${name};
                 prev = prev.${name};
               };
             };
-            allFromNixpkgs = names: lib.mergeAttrsList (map fromNixpkgs names);
+            fromNixpkgs = names: lib.mergeAttrsList (map fromNixpkgs1 names);
+            patchElfs = names: lib.genAttrs names (name: prev.${name}.overrideAttrs (old: {
+              autoPatchelfIgnoreMissingDeps = true;
+            }));
           in {
-            # Special case: tkinter is part of Python stdlib but needs special handling
             tkinter = python.pkgs.tkinter;
-            
             # Patch stempeg to find ffmpeg binaries
             stempeg = prev.stempeg.overrideAttrs (old: {
               postInstall = (old.postInstall or "") + ''
@@ -65,20 +66,8 @@
                 fi
               '';
             });
-            
-            # Ignore missing CUDA dependencies for PyTorch ecosystem
-            #torch = prev.torch.overrideAttrs (old: {
-            #  autoPatchelfIgnoreMissingDeps = true;
-            #});
-            #torchaudio = prev.torchaudio.overrideAttrs (old: {
-            #  autoPatchelfIgnoreMissingDeps = true;
-            #});
-            #torchcodec = prev.torchcodec.overrideAttrs (old: {
-            #  autoPatchelfIgnoreMissingDeps = true;
-            #});
-            #executorch = prev.executorch.overrideAttrs (old: {
-            #  autoPatchelfIgnoreMissingDeps = true;
-            #});
+
+            # Patch in portaudio for sounddevice
             sounddevice = prev.sounddevice.overrideAttrs (old: {
               nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.autoPatchelfHook ];
               buildInputs = (old.buildInputs or []) ++ [ pkgs.portaudio ];
@@ -90,34 +79,32 @@
               '';
             });
             
-          } // (lib.genAttrs [
+          } // (patchElfs [
             "torch"
             "torchaudio"
             "torchcodec"
+            "numba"
             #"pytorch-triton-rocm"
             #"executorch"
-            "numba"
             # Ignore all NVIDIA/CUDA packages
-            #"nvidia-cublas-cu12"
-            #"nvidia-cuda-cupti-cu12"
-            #"nvidia-cuda-nvrtc-cu12"
-            #"nvidia-cuda-runtime-cu12"
-            #"nvidia-cudnn-cu12"
-            #"nvidia-cufft-cu12"
-            #"nvidia-cufile-cu12"
-            #"nvidia-curand-cu12"
-            #"nvidia-cusolver-cu12"
-            #"nvidia-cusparse-cu12"
-            #"nvidia-cusparselt-cu12"
-            #"nvidia-nccl-cu12"
-            #"nvidia-nvjitlink-cu12"
-            #"nvidia-nvtx-cu12"
-            #"triton"
-          ] (name: prev.${name}.overrideAttrs (old: {
-            autoPatchelfIgnoreMissingDeps = true;
-          }))) // allFromNixpkgs [
-            "tkinter"
-          ];
+            "nvidia-cublas-cu12"
+            "nvidia-cuda-cupti-cu12"
+            "nvidia-cuda-nvrtc-cu12"
+            "nvidia-cuda-runtime-cu12"
+            "nvidia-cudnn-cu12"
+            "nvidia-cufft-cu12"
+            "nvidia-cufile-cu12"
+            "nvidia-curand-cu12"
+            "nvidia-cusolver-cu12"
+            "nvidia-cusparse-cu12"
+            "nvidia-cusparselt-cu12"
+            "nvidia-nccl-cu12"
+            "nvidia-nvjitlink-cu12"
+            "nvidia-nvtx-cu12"
+            "triton"
+          ]) // (fromNixpkgs [
+            #"tkinter"
+          ]);
 
         pythonBase = pkgs.callPackage pyproject-nix.build.packages {
           inherit python;
@@ -128,10 +115,6 @@
         overlay = workspace.mkPyprojectOverlay {
           sourcePreference = "wheel";
         };
-          #dependencies = {
-          #  pal-stem-separator = [ "rocm64" ];
-          #  #pal-stem-separator = [  ];
-          #};
 
         pythonSet = pythonBase.overrideScope (
           lib.composeManyExtensions [
@@ -142,14 +125,12 @@
         );
 
         pal-stem-separator-venv =
-          pythonSet.mkVirtualEnv "pal_stem_separator" (workspace.deps.default // {
-            pal-stem-separator = [ "rocm64" ];
-          });
+          pythonSet.mkVirtualEnv "pal_stem_separator" workspace.deps.default;
 
       in {
         devShells = {
           default = pkgs.mkShell {
-            buildInputs = with pkgs; [
+            propagatedBuildInputs = with pkgs; [
               pkg-config
               jo
               jq
@@ -162,12 +143,13 @@
               zlib.dev
               portaudio
               tk
+              python.pkgs.tkinter
             ];
 
             packages = [
               pal-stem-separator-venv
               self.packages.${system}.pal-stem-separator-all
-              pkgs.python3Packages.tkinter
+              python.pkgs.tkinter
               pkgs.uv
               pkgs.tk
             ];
@@ -180,7 +162,7 @@
 
             shellHook = ''
               export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${pkgs.ffmpeg.lib}/lib"
-              #unset PYTHONPATH
+              unset PYTHONPATH
               export REPO_ROOT=$(git rev-parse --show-toplevel)
             '';
           };
@@ -209,6 +191,7 @@
                 portaudio
                 ffmpeg
                 ffmpeg.lib
+                python.pkgs.tkinter
               ];
             } ''
               mkdir -p $out/bin

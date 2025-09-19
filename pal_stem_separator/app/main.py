@@ -312,14 +312,15 @@ def run_ui_thread():
 
 def main():
     """Main processing loop."""
-    args = Args.read()
+    # Start live args watcher
+    logging.debug("Starting live args watcher")
+    args = Args.get_live()
 
     if args.executorch_run_export:
         logging.info("Running Executorch export")
         return export_executorch.run_export(args)
 
-    # Start live args watcher
-    args = Args.get_live()
+    print(args)
 
     if args.ui_only:
         if args.gui:
@@ -387,6 +388,3 @@ def main():
         sys.exit(1)
     
     logging.info("Stream complete")
-
-if __name__ == "__main__":
-    main()

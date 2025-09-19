@@ -30,8 +30,8 @@ def load_model_from_checkpoint(hparams):
     from hs_tasnet import HSTasNet
 
     model = HSTasNet(
-        stereo=hparams.stereo,
-        small=hparams.small,
+        stereo=True,
+        small=False
     )
 
     ckpt_path = Path(hparams.checkpoint)

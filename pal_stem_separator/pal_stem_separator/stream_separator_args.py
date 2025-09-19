@@ -40,6 +40,7 @@ class Args:
     normalize: bool
     device: str
     watch: bool
+    debug: bool = False
     empty_queues_requested: str | None = None
     queues_last_emptied_at: str | None = None
     tui_tmux_session_name: str | None = "stem_separator_tui"
@@ -53,9 +54,9 @@ class Args:
     observer: Observer | None = dataclasses.field(default=None, repr=False, compare=False)
 
     # Export args
-    executorch_run_export: bool = dataclasses.field(default=False, repr=False, compare=False)
-    executorch_output: str | None = dataclasses.field(default="export/separation.pte", repr=False, compare=False)
-    executorch_example_len: int | None = dataclasses.field(default=8192, repr=False, compare=False)
+    executorch_run_export: bool = False
+    executorch_output: str = "export/separation.pte"
+    executorch_example_len: int = 8192
 
     @classmethod
     def get_config_dir(cls, args=None):
@@ -145,6 +146,7 @@ class Args:
         parser.add_argument('--device', type=str,
                             help='Device to use (cuda/cpu)')
 
+        parser.add_argument("--executorch-run-export", action='store_true', help="Output ExecuTorch package file (.pte)")
         parser.add_argument("--executorch-output", default="exports/separation.pte", help="Output ExecuTorch package file (.pte)")
         parser.add_argument("--executorch-example-len", type=int, default=8192, help="Example T dimension for export")
 
@@ -165,6 +167,7 @@ class Args:
 
         observer = prev_args.observer if prev_args is not None else None
         watch = args.watch or config_args.watch
+        debug = args.debug or config_args.debug
         logging.info(f"Watch config for changes: {watch} (existing observer={observer})")
         if watch and (observer is None):
             logging.info(f"Setting up config file watcher for {config_dir}")
@@ -197,6 +200,7 @@ class Args:
             overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
             device=args.device if args.device is not None else config_args.device,
             normalize=args.normalize or config_args.normalize,
+            debug=debug,
             config_dir=config_dir,
             config_path=config_json_path,
             watch=watch,
