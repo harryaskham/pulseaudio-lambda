@@ -15,7 +15,7 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        pal-stem-separator-pkg = pal-stem-separator.packages.${system}.default;
+        pal-stem-separator-pkg = pal-stem-separator.packages.${system}.all;
 
         pulseaudio-lambda-cli = pkgs.stdenv.mkDerivation {
           pname = "pulseaudio-lambda-cli";
@@ -37,9 +37,6 @@
             pal-stem-separator-pkg
             pulseaudioFull
             pulseaudioFull.dev
-            ffmpeg
-            ffmpeg.lib
-            portaudio
           ];
 
           buildPhase = ''
@@ -110,20 +107,13 @@
           paths = [
             pulseaudio-lambda-cli
             pal-stem-separator-pkg
-            # pulseaudio-lambda-module  - broken
           ];
-          buildInputs = [ pkgs.makeWrapper ];
-          propagatedBuildInputs = with pkgs; [
-            ffmpeg
-            ffmpeg.lib
-            portaudio
-            pal-stem-separator-pkg
-          ];
-          postBuild = ''
-            wrapProgram $out/bin/pulseaudio-lambda \
-              --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib:${pkgs.portaudio}/lib" \
-              --prefix PATH : "${pkgs.ffmpeg}/bin"
-          '';
+          # buildInputs = with pkgs; [ makeWrapper ];
+          # postBuild = ''
+          #   wrapProgram $out/bin/pulseaudio-lambda \
+          #     --prefix LD_LIBRARY_PATH : "${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib:${pkgs.portaudio}/lib" \
+          #     --prefix PATH : "${pkgs.ffmpeg}/bin"
+          # '';
         };
 
       in rec {

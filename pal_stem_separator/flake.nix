@@ -38,8 +38,12 @@
         inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
 
-        # Base Python interpreter w/ tkinter
         python = pkgs.python312;
+        # python = pkgs.python312.override (old: {
+        #   interpreter = old.withPackages (ps: with ps; [
+        #     tkinter
+        #   ]);
+        # });
 
         hacks = pkgs.callPackage pyproject-nix.build.hacks {};
         pyprojectOverlay = final: prev:
@@ -55,7 +59,7 @@
               autoPatchelfIgnoreMissingDeps = true;
             }));
           in {
-            tkinter = python.pkgs.tkinter;
+            tkinter = fromNixpkgs1 "tkinter";
 
             # Patch stempeg to find ffmpeg binaries
             stempeg = prev.stempeg.overrideAttrs (old: {
@@ -128,31 +132,23 @@
         pal-stem-separator-venv =
           pythonSet.mkVirtualEnv "pal_stem_separator" workspace.deps.default;
 
-        # Nix requires tkinter injecting back at the final stage since withPackages drops
-        # version and stdenv info needed by the rest of uv2nix
-        #interpreter = pythonSet.python.interpreter.withPackages (ps: [ps.tkinter]);
-        interpreter = pythonSet.python.withPackages (ps: [ps.tkinter]);
-
       in rec {
         devShells = {
           default = pkgs.mkShell {
-            inputsFrom = [ packages.default ];
-
-            packages = [
+            packages = with pkgs; [
               pal-stem-separator-venv
-              pkgs.uv
-              pkgs.tk
-              interpreter
+              uv
+              tk
             ];
 
             env = {
               UV_NO_SYNC = "1";
-              UV_PYTHON = "${interpreter}/bin/python3.12";
+              UV_PYTHON = (pythonSet.python.withPackages (ps: [ps.tkinter])).interpreter;
               UV_PYTHON_DOWNLOADS = "never";
             };
 
             shellHook = ''
-              export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${pkgs.ffmpeg.lib}/lib"
+              export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               unset PYTHONPATH
               export REPO_ROOT=$(git rev-parse --show-toplevel)
             '';
@@ -168,18 +164,20 @@
             };
           in rec {
             default = pal-stem-separator;
-            pal-stem-separator = pkgs.symlinkJoin {
+
+            all = pkgs.symlinkJoin {
               name = "pal-stem-separator-all";
               paths = [
-                pal-stem-separator-cli
+                pal-stem-separator
                 pal-stem-separator-gui
                 pal-stem-separator-tui
               ];
             };
-            pal-stem-separator-cli = pkgs.runCommand "pal-stem-separator" {
-              buildInputs = [ pkgs.makeWrapper ];
+
+            pal-stem-separator = pkgs.runCommand "pal-stem-separator" {
               propagatedBuildInputs = with pkgs; [
-                interpreter
+                makeWrapper
+                app
                 pkg-config
                 jo
                 jq
@@ -194,7 +192,6 @@
                 ffmpeg
                 ffmpeg.lib
                 tk
-                python.pkgs.tkinter
               ];
             } ''
               mkdir -p $out/bin
@@ -204,8 +201,7 @@
               #!/usr/bin/env bash
               export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               export PATH="${pkgs.ffmpeg}/bin''${PATH:+:$PATH}"
-              export PYTHONPATH="${pkgs.python3Packages.tkinter}/${python.sitePackages}''${PYTHONPATH:+:$PYTHONPATH}"
-              
+
               # Preload portaudio so sounddevice can find it
               export LD_PRELOAD="${pkgs.portaudio}/lib/libportaudio.so.2''${LD_PRELOAD:+:$LD_PRELOAD}"
               
@@ -216,11 +212,11 @@
             '';
 
             pal-stem-separator-gui = pkgs.writeShellScriptBin "pal-stem-separator-gui" ''
-              exec ${pal-stem-separator-cli}/bin/pal-stem-separator --gui --ui-only "$@"
+              exec ${pal-stem-separator}/bin/pal-stem-separator-cli --gui --ui-only "$@"
             '';
 
             pal-stem-separator-tui = pkgs.writeShellScriptBin "pal-stem-separator-tui" ''
-              exec ${pal-stem-separator-cli}/bin/pal-stem-separator --tui --ui-only "$@"
+              exec ${pal-stem-separator}/bin/pal-stem-separator-cli --tui --ui-only "$@"
             '';
           };
       });
