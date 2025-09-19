@@ -38,6 +38,7 @@
         inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
 
+        # Base Python for pyproject-nix (Tk handled via lazy imports/fallback)
         python = pkgs.python312;
         # python = pkgs.python312.override (old: {
         #   interpreter = old.withPackages (ps: with ps; [
@@ -59,8 +60,6 @@
               autoPatchelfIgnoreMissingDeps = true;
             }));
           in {
-            tkinter = fromNixpkgs1 "tkinter";
-
             # Patch stempeg to find ffmpeg binaries
             stempeg = prev.stempeg.overrideAttrs (old: {
               postInstall = (old.postInstall or "") + ''
@@ -135,20 +134,19 @@
       in rec {
         devShells = {
           default = pkgs.mkShell {
-            packages = with pkgs; [
+            packages = with pkgs; [ 
+              packages.all
               pal-stem-separator-venv
               uv
-              tk
             ];
 
             env = {
               UV_NO_SYNC = "1";
-              UV_PYTHON = (pythonSet.python.withPackages (ps: [ps.tkinter])).interpreter;
               UV_PYTHON_DOWNLOADS = "never";
             };
 
             shellHook = ''
-              export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               unset PYTHONPATH
               export REPO_ROOT=$(git rev-parse --show-toplevel)
             '';
@@ -191,7 +189,6 @@
                 portaudio
                 ffmpeg
                 ffmpeg.lib
-                tk
               ];
             } ''
               mkdir -p $out/bin
@@ -199,7 +196,7 @@
               # Create a wrapper script that preloads portaudio
               cat > $out/bin/pal-stem-separator << 'EOF'
               #!/usr/bin/env bash
-              export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.tk}/lib:${pkgs.tcl}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
               export PATH="${pkgs.ffmpeg}/bin''${PATH:+:$PATH}"
 
               # Preload portaudio so sounddevice can find it
@@ -212,11 +209,11 @@
             '';
 
             pal-stem-separator-gui = pkgs.writeShellScriptBin "pal-stem-separator-gui" ''
-              exec ${pal-stem-separator}/bin/pal-stem-separator-cli --gui --ui-only "$@"
+              exec ${pal-stem-separator}/bin/pal-stem-separator --gui --ui-only "$@"
             '';
 
             pal-stem-separator-tui = pkgs.writeShellScriptBin "pal-stem-separator-tui" ''
-              exec ${pal-stem-separator}/bin/pal-stem-separator-cli --tui --ui-only "$@"
+              exec ${pal-stem-separator}/bin/pal-stem-separator --tui --ui-only "$@"
             '';
           };
       });

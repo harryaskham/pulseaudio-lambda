@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """
 Main entry point for the stream separator UI.
-Can launch either GUI or TUI mode.
+Can launch either GUI (web) or TUI mode.
 """
 
 import sys
 import argparse
 import logging
-
-from pal_stem_separator.ui.gui import StreamSeparatorGUI
-from pal_stem_separator.ui.tui import StreamSeparatorTUI
 
 def run(mode: str):
     if mode == "auto":
@@ -30,7 +27,9 @@ def run(mode: str):
     if mode == "gui":
         try:
             logging.info("Starting GUI mode...")
-            app = StreamSeparatorGUI()
+            # Web-based GUI (no Tk dependency)
+            from pal_stem_separator.ui.web import StreamSeparatorWebGUI
+            app = StreamSeparatorWebGUI()
             app.run()
         except ImportError as e:
             logging.error(f"Failed to import GUI module: {e}")
@@ -44,6 +43,8 @@ def run(mode: str):
     if mode == "tui":
         try:
             logging.info("Starting TUI mode...")
+            # Import lazily to avoid requiring textual unless needed
+            from pal_stem_separator.ui.tui import StreamSeparatorTUI
             app = StreamSeparatorTUI()
             app.run()
         except ImportError as e:
