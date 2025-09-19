@@ -13,6 +13,9 @@ from starlette.routing import Route
 import uvicorn
 import json
 import os
+import threading
+import time
+import webbrowser
 
 from pal_stem_separator.stream_separator_args import Args
 
@@ -235,10 +238,39 @@ class StreamSeparatorWebGUI:
     def run(self):
         host = os.environ.get("PAL_UI_HOST", "127.0.0.1")
         port = int(os.environ.get("PAL_UI_PORT", "8765"))
-        print(f"Web UI available at http://{host}:{port}")
-        uvicorn.run(self.app, host=host, port=port, log_level="info")
+        url = f"http://{host}:{port}"
 
+        # Start server in a background thread
+        config = uvicorn.Config(self.app, host=host, port=port, log_level="info")
+        server = uvicorn.Server(config)
 
-if __name__ == "__main__":
-    StreamSeparatorWebGUI().run()
+        def serve():
+            server.run()
 
+        t = threading.Thread(target=serve, daemon=True)
+        t.start()
+
+        # Give server a moment to bind
+        time.sleep(0.3)
+
+        # Try to open a native window via pywebview if available; fallback to browser
+        try:
+            import webview  # type: ignore
+            window_title = os.environ.get("PAL_UI_TITLE", "Stream Separator Configuration")
+            webview.create_window(window_title, url)
+            print(f"Web UI available in native window at {url}")
+            webview.start()
+        except Exception:
+            print(f"Web UI available at {url}")
+            # Open default browser if allowed
+            try:
+                if os.environ.get("PAL_UI_OPEN", "1") != "0":
+                    webbrowser.open(url)
+            except Exception:
+                pass
+            # Keep process alive while server runs
+            try:
+                while t.is_alive():
+                    time.sleep(0.5)
+            except KeyboardInterrupt:
+                pass
