@@ -1,11 +1,13 @@
 package main
 
 import (
+    "bufio"
     "encoding/json"
     "errors"
     "fmt"
     tea "github.com/charmbracelet/bubbletea"
     "github.com/charmbracelet/bubbles/textinput"
+    "github.com/charmbracelet/bubbles/viewport"
     "github.com/charmbracelet/lipgloss"
     "bytes"
     "io/fs"
@@ -170,6 +172,7 @@ func (s *slider) Render(width int) string {
 
 type msgSave struct{}
 type msgStatsTick struct{}
+type msgLogPoll struct{}
 
 type model struct {
     cfg      Config
@@ -197,6 +200,13 @@ type model struct {
 
     // service status
     serviceRunning bool
+
+    // logs viewport
+    showLogs bool
+    vp       viewport.Model
+    logs     []string
+    logCh    chan string
+    childCmd *exec.Cmd
 }
 
 func initialModel() model {
@@ -214,6 +224,8 @@ func initialModel() model {
     ti.CharLimit = 4096
     ti.Width = 60
     m.chkpt = ti
+    m.vp = viewport.Model{Width: 80, Height: 10}
+    m.logCh = make(chan string, 1024)
 
     return m
 }
@@ -245,7 +257,9 @@ var (
 )
 
 func (m model) Init() tea.Cmd {
-    return tea.Tick(1*time.Second, func(time.Time) tea.Msg { return msgStatsTick{} })
+    return tea.Batch(
+        tea.Tick(1*time.Second, func(time.Time) tea.Msg { return msgStatsTick{} }),
+    )
 }
 
 func (m *model) scheduleSave() tea.Cmd {
@@ -256,6 +270,10 @@ func (m *model) scheduleSave() tea.Cmd {
 
 func (m *model) scheduleStats() tea.Cmd {
     return tea.Tick(1*time.Second, func(time.Time) tea.Msg { return msgStatsTick{} })
+}
+
+func (m *model) scheduleLogPoll() tea.Cmd {
+    return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg { return msgLogPoll{} })
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -313,6 +331,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             }
             m.focused++
             if m.focused > 19 { m.focused = 19 }
+            // also forward to viewport for scroll-on-hover if logs visible
+            if m.showLogs {
+                var cmd tea.Cmd
+                m.vp, cmd = m.vp.Update(msg)
+                return m, cmd
+            }
             return m, nil
         }
     case tea.KeyMsg:
@@ -320,10 +344,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         case "ctrl+c", "q":
             return m, tea.Quit
         case "up":
-            if m.focused > 0 { m.focused-- }
+            m.focused = m.prevFocus()
         case "down":
-            m.focused++
-            if m.focused > m.maxFocus() { m.focused = m.maxFocus() }
+            m.focused = m.nextFocus()
         case "left":
             // Per-stem focus order: vol, mute, solo
             if m.focused >= 0 && m.focused < 12 {
@@ -375,13 +398,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             case 12: m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
             case 18: m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
             case 20:
-                if m.serviceRunning { stopServiceAsync() } else { startServiceAsync() }
+                if m.serviceRunning {
+                    if m.childCmd != nil { m.stopChild() } else { stopServiceAsync() }
+                    return m, nil
+                }
+                return m, m.startChild()
+            case 21:
+                m.showLogs = !m.showLogs
                 return m, nil
             }
         // no explicit save button/hotkey; autosave is default
         case "r": m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
         case "e": m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
         case "n": m.cfg.Normalize = !m.cfg.Normalize; return m, m.scheduleSave()
+        case "l": m.showLogs = !m.showLogs; return m, nil
         case "d":
             i := 0; m.cycleStemState(i); return m, m.scheduleSave()
         case "b":
@@ -390,6 +420,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             i := 2; m.cycleStemState(i); return m, m.scheduleSave()
         case "o":
             i := 3; m.cycleStemState(i); return m, m.scheduleSave()
+        }
+        // Forward other keys to logs viewport when visible
+        if m.showLogs {
+            var cmd tea.Cmd
+            m.vp, cmd = m.vp.Update(msg)
+            return m, cmd
         }
     case tea.WindowSizeMsg:
         m.width = msg.Width; m.height = msg.Height
@@ -414,6 +450,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         m.lastStatsAt = now
         m.serviceRunning = isServiceRunning()
         return m, m.scheduleStats()
+    case msgLogPoll:
+        if m.childCmd != nil && m.logCh != nil {
+            drained := false
+            for i:=0; i<512; i++ {
+                select {
+                case line := <-m.logCh:
+                    m.logs = append(m.logs, line)
+                    drained = true
+                default:
+                    i = 512; // break
+                }
+            }
+            if drained {
+                if len(m.logs) > 2000 { m.logs = m.logs[len(m.logs)-2000:] }
+                m.vp.SetContent(strings.Join(m.logs, "\n"))
+                m.vp.GotoBottom()
+            }
+            return m, m.scheduleLogPoll()
+        }
+        return m, nil
     }
 
     // textinput update when focused
@@ -463,6 +519,7 @@ const (
     hitTextCheckpoint
     hitBtnStart
     hitBtnStop
+    hitBtnLogs
 )
 
 type hitArea struct { x1, y1, x2, y2 int; kind hitKind; index int; }
@@ -531,11 +588,14 @@ func (m model) handleHit(h hitArea, clickX int) (tea.Model, tea.Cmd) {
         return m, nil
     case hitBtnStart:
         m.focused = 20
-        startServiceAsync()
-        return m, nil
+        return m, m.startChild()
     case hitBtnStop:
         m.focused = 20
-        stopServiceAsync()
+        if m.childCmd != nil { m.stopChild() } else { stopServiceAsync() }
+        return m, nil
+    case hitBtnLogs:
+        m.focused = 21
+        m.showLogs = !m.showLogs
         return m, nil
     }
     return m, nil
@@ -564,16 +624,16 @@ func (m model) View() string {
     fmt.Fprintf(sb, "  Input:     %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.InputBytes), formatInt(m.stats.InputSamples), m.stats.InputSecs)
     fmt.Fprintf(sb, "  Processed: %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.ProcessedBytes), formatInt(m.stats.ProcessedSamples), m.stats.ProcessedSecs)
     fmt.Fprintf(sb, "  Output:    %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.OutputBytes), formatInt(m.stats.OutputSamples), m.stats.OutputSecs)
-    // Service status
-    if m.serviceRunning {
-        stopBtn := btnStyle.Render("Stop")
-        if m.focused == 20 { stopBtn = btnFocusStyle.Render("Stop") }
-        fmt.Fprintln(sb, "  Service: "+lipgloss.NewStyle().Foreground(nord14).Render("Running")+"  "+stopBtn)
-    } else {
-        startBtn := btnStyle.Render("Start")
-        if m.focused == 20 { startBtn = btnFocusStyle.Render("Start") }
-        fmt.Fprintln(sb, "  Service: "+lipgloss.NewStyle().Foreground(nord11).Render("Stopped")+"  "+startBtn)
-    }
+    // Service status and logs toggle
+    var svc string
+    if m.serviceRunning { svc = lipgloss.NewStyle().Foreground(nord14).Render("Running") } else { svc = lipgloss.NewStyle().Foreground(nord11).Render("Stopped") }
+    svcLabel := "Start"; if m.serviceRunning { svcLabel = "Stop" }
+    svcStyle := btnStyle; if m.focused == 20 { svcStyle = btnFocusStyle }
+    svcBtn := svcStyle.Render(svcLabel)
+    logsLabel := "Show Logs"; if m.showLogs { logsLabel = "Hide Logs" }
+    logsStyle := btnStyle; if m.focused == 21 { logsStyle = btnFocusStyle }
+    logsBtn := logsStyle.Render(logsLabel)
+    fmt.Fprintln(sb, "  Service: "+svc+"  "+svcBtn+"  "+logsBtn)
     // Service Start button hit area if stopped
     if !m.serviceRunning {
         // Approximate start button position: last line of sb
@@ -585,12 +645,18 @@ func (m model) View() string {
     // advance Y by panel height (content lines + 2 borders + 1 margin)
     liveLines := strings.Count(sb.String(), "\n") + 1
     curY += liveLines + 3
-    // approximate a clickable region for Start/Stop on the last content line within the panel
+    // approximate a clickable region for Start/Stop and Logs on the last content line within the panel
     btnY := curY - 3
-    if m.serviceRunning {
-        m.hits = append(m.hits, hitArea{ x1: 2, y1: btnY, x2: 2 + w, y2: btnY, kind: hitBtnStop })
-    } else {
-        m.hits = append(m.hits, hitArea{ x1: 2, y1: btnY, x2: 2 + w, y2: btnY, kind: hitBtnStart })
+    if m.serviceRunning { m.hits = append(m.hits, hitArea{ x1: 2, y1: btnY, x2: 2 + w/3, y2: btnY, kind: hitBtnStop }) }
+    if !m.serviceRunning { m.hits = append(m.hits, hitArea{ x1: 2, y1: btnY, x2: 2 + w/3, y2: btnY, kind: hitBtnStart }) }
+    m.hits = append(m.hits, hitArea{ x1: 2 + w/3 + 2, y1: btnY, x2: 2 + w, y2: btnY, kind: hitBtnLogs })
+
+    // Logs viewport (optional)
+    if m.showLogs {
+        m.vp.Width = w
+        m.vp.Height = max(6, m.height/3)
+        fmt.Fprintln(b, panelStyle.Render("Logs\n"+m.vp.View()))
+        curY += m.vp.Height + 3
     }
 
     // Volume Controls
@@ -833,7 +899,33 @@ func main() {
 }
 
 // Dynamic max focus index depending on whether Start is visible
-func (m model) maxFocus() int { return 20 }
+func (m model) maxFocus() int { return 21 }
+
+func (m model) focusOrder() []int {
+    order := []int{20, 21}
+    // stems vol/mute/solo
+    for i:=0; i<12; i++ { order = append(order, i) }
+    order = append(order, 12,13,14,15,16,17,18,19)
+    return order
+}
+
+func (m model) nextFocus() int {
+    order := m.focusOrder()
+    cur := m.focused
+    idx := 0
+    for i, v := range order { if v == cur { idx = i; break } }
+    if idx < len(order)-1 { return order[idx+1] }
+    return order[idx]
+}
+
+func (m model) prevFocus() int {
+    order := m.focusOrder()
+    cur := m.focused
+    idx := 0
+    for i, v := range order { if v == cur { idx = i; break } }
+    if idx > 0 { return order[idx-1] }
+    return order[idx]
+}
 
 func isServiceRunning() bool {
     // Prefer scanning /proc cmdline to match regex "pal-stem-separator$" in any argv segment
@@ -907,4 +999,33 @@ func toInt(s string) int {
         n = n*10 + int(c-'0')
     }
     return n
+}
+
+// Start child process with captured logs
+func (m *model) startChild() tea.Cmd {
+    if m.childCmd != nil { return nil }
+    cmd := exec.Command("pulseaudio-lambda", "pal-stem-separator")
+    stdout, _ := cmd.StdoutPipe()
+    stderr, _ := cmd.StderrPipe()
+    if err := cmd.Start(); err != nil {
+        return nil
+    }
+    m.childCmd = cmd
+
+    go func() {
+        sc := bufio.NewScanner(stdout)
+        for sc.Scan() { m.logCh <- sc.Text() }
+    }()
+    go func() {
+        sc := bufio.NewScanner(stderr)
+        for sc.Scan() { m.logCh <- sc.Text() }
+    }()
+    // Begin polling logs
+    return m.scheduleLogPoll()
+}
+
+func (m *model) stopChild() {
+    if m.childCmd == nil { return }
+    _ = m.childCmd.Process.Signal(syscall.SIGTERM)
+    m.childCmd = nil
 }

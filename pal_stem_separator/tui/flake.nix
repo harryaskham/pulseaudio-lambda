@@ -36,7 +36,8 @@
             postPatch = ''
               rm -rf vendor || true
             '';
-            vendorHash = "sha256-JGQ/UHaGj8t8G/stfcTTnGtifw8ZfbxCzByzH5METyo=";
+            # Updated after adding bubbles/viewport
+            vendorHash = "sha256-ZpLb3lZy3vmiHJbniWdJOxej+v3ZO6Isw4cR90/wRpc=";
             postInstall = ''
               # ensure consistent binary name
               if [ -d "$out/bin" ]; then
