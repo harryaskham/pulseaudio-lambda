@@ -268,19 +268,17 @@ class Stats(Value[StatsData], Monoid[StatsData]):
         return cls(StatsData())
 
     def mappend(self, other: Self) -> Self:
-        self_dict = dataclasses.asdict(self.get())
-        other_dict = dataclasses.asdict(other.get())
-        for k, self_value in self_dict.items():
-            other_value = other_dict.get(k, T.mempty())
-            self_dict[k] = self_value.mappend(other_value)
-        return self.set(StatsData(**self_dict))
+        kwargs = {}
+        for field in dataclasses.fields(self.get()):
+            kwargs[field.name] = getattr(self.get(), field.name).mappend(getattr(other.get(), field.name))
+        return self.set(StatsData(**kwargs))
 
     def save(self, args):
         with open(args.stats_path, 'w') as f:
-            json.dump({
-                k: v.get()
-                for k, v in dataclasses.asdict(self.get())
-            }, f)
+            data = {}
+            for field in dataclasses.fields(self.get()):
+                data[field.name] = getattr(self.get(), field.name).get()
+            json.dump(data, f)
 
 def stats_output_thread(stats_queue):
     """Output thread that writes queued stats at regular intervals."""
@@ -291,8 +289,9 @@ def stats_output_thread(stats_queue):
             logging.debug(f"stats: {stats}")
             new_stats = stats_queue.get()
             logging.debug(f"mappending stats: {new_stats}")
-            stats = stats.mappend(stats, new_stats)
+            stats = stats.mappend(new_stats)
             logging.debug(f"stats: {new_stats}")
+            stats.save(args)
         except queue.Empty:
             continue
 

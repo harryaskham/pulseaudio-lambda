@@ -7,6 +7,11 @@
     pal-stem-separator = {
       url = "path:./pal_stem_separator";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pal-stem-separator-tui-flake.follows = "pal-stem-separator-tui-flake";
+    };
+    pal-stem-separator-tui-flake = {
+      url = "path:./pal_stem_separator/tui";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
