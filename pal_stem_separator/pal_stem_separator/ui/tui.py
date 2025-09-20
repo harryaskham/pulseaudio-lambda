@@ -243,6 +243,14 @@ class StreamSeparatorTUI(App):
     #save-button:hover {
         background: $success-lighten-1;
     }
+
+    #latency-bar {
+        height: 1;
+        margin: 0 0 1 0;
+    }
+    .lat-ok { color: $success; }
+    .lat-warn { color: $warning; }
+    .lat-bad { color: $error; }
     """
     
     BINDINGS = [
@@ -258,6 +266,17 @@ class StreamSeparatorTUI(App):
         self.checkpoint_input = None
         self.last_save_time = 0
         self.save_delay = 0.2  # Throttle saves to max once per 200ms
+        # Stats state
+        self.prev_stats = None
+        self.prev_stats_at = 0.0
+        self.in_kbps = 0.0
+        self.out_kbps = 0.0
+        self.rtf = 0.0
+        # Stats widgets
+        self.latency_bar = Static(id="latency-bar")
+        self.latency_label = Label("0.00 s", id="latency-label")
+        self.throughput_label = Label("In 0.0 kB/s  Out 0.0 kB/s  RTF 0.00x", id="throughput-label")
+        self.raw_totals = Static(id="raw-totals")
     
     def compose(self) -> ComposeResult:
         """Create the UI layout."""
@@ -265,6 +284,17 @@ class StreamSeparatorTUI(App):
         yield Footer()
         
         with ScrollableContainer(id="container"):
+            # Live stats section
+            with Container(classes="section"):
+                yield Label("Live Stats", classes="section-title")
+                with Vertical():
+                    with Horizontal():
+                        yield Label("Latency:")
+                        yield self.latency_bar
+                        yield self.latency_label
+                    yield self.throughput_label
+                    yield Label("Raw Totals:")
+                    yield self.raw_totals
             # Volume controls section
             with Container(classes="section"):
                 yield Label("Volume Controls", classes="section-title")
@@ -377,6 +407,10 @@ class StreamSeparatorTUI(App):
         elif event.button.id.startswith("solo_"):
             stem_index = int(event.button.id.split("_")[1])
             self.toggle_solo(stem_index)
+
+    def on_mount(self) -> None:
+        # Poll stats every second
+        self.set_interval(1.0, self.refresh_stats)
     
     def save_config_throttled(self) -> None:
         """Save config with throttling to prevent excessive writes during slider drags."""
@@ -460,3 +494,98 @@ class StreamSeparatorTUI(App):
         """Quit the application."""
         self.save_config()
         self.exit()
+
+    # --- Stats helpers ---
+    def refresh_stats(self) -> None:
+        import json, time as _time
+        try:
+            args = self.config  # Args.read() would reload file; we just need stats_path
+            with open(args.stats_path, 'r') as f:
+                stats = json.load(f)
+        except Exception:
+            stats = {}
+
+        now = _time.time()
+        if self.prev_stats is not None and self.prev_stats_at:
+            dt = max(1e-3, now - self.prev_stats_at)
+            self.in_kbps = max(0.0, (stats.get('input_bytes', 0) - self.prev_stats.get('input_bytes', 0)) / dt / 1024.0)
+            self.out_kbps = max(0.0, (stats.get('output_bytes', 0) - self.prev_stats.get('output_bytes', 0)) / dt / 1024.0)
+            self.rtf = max(0.0, (stats.get('processed_secs', 0.0) - self.prev_stats.get('processed_secs', 0.0)) / dt)
+        self.prev_stats = stats
+        self.prev_stats_at = now
+
+        # Update UI elements
+        lat = float(stats.get('latency_secs', 0.0))
+        self.latency_label.update(f"{lat:.2f} s")
+        self._render_latency_bar(lat)
+        self.throughput_label.update(
+            f"In {self._fmt_rate(self.in_kbps*1024)}  Out {self._fmt_rate(self.out_kbps*1024)}  RTF {self.rtf:.2f}x"
+        )
+
+        def to_mb(b):
+            return (float(b)/1024.0/1024.0) if b is not None else 0.0
+        def fmt_samples(x):
+            try:
+                return f"{int(float(x)):,}"
+            except Exception:
+                return "0"
+        raw = (
+            f"Input: {self._fmt_bytes(stats.get('input_bytes',0))}  "
+            f"{fmt_samples(stats.get('input_samples',0))} samples  "
+            f"{float(stats.get('input_secs',0.0)):.2f} s\n"
+            f"Processed: {self._fmt_bytes(stats.get('processed_bytes',0))}  "
+            f"{fmt_samples(stats.get('processed_samples',0))} samples  "
+            f"{float(stats.get('processed_secs',0.0)):.2f} s\n"
+            f"Output: {self._fmt_bytes(stats.get('output_bytes',0))}  "
+            f"{fmt_samples(stats.get('output_samples',0))} samples  "
+            f"{float(stats.get('output_secs',0.0)):.2f} s"
+        )
+        self.raw_totals.update(raw)
+
+    def _render_latency_bar(self, seconds: float) -> None:
+        max_seconds = 45.0
+        ratio = max(0.0, min(1.0, seconds / max_seconds))
+        width = 40
+        filled = int(round(ratio * width))
+        bar_chars = list('█' * filled + '░' * (width - filled))
+        # chunk marker
+        try:
+            cr = max(0.0, min(1.0, float(self.config.chunk_secs) / max_seconds))
+        except Exception:
+            cr = 0.0
+        mpos = max(0, min(width - 1, int(round(cr * (width - 1)))))
+        bar_chars[mpos] = '│'
+        bar = ''.join(bar_chars)
+        # Update style classes
+        self.latency_bar.remove_class("lat-ok")
+        self.latency_bar.remove_class("lat-warn")
+        self.latency_bar.remove_class("lat-bad")
+        if seconds >= 45.0:
+            self.latency_bar.add_class("lat-bad")
+        elif seconds >= 40.0:
+            self.latency_bar.add_class("lat-warn")
+        else:
+            self.latency_bar.add_class("lat-ok")
+        self.latency_bar.update(f"[{bar}]")
+
+    def _fmt_bytes(self, b) -> str:
+        try:
+            b = float(b)
+        except Exception:
+            b = 0.0
+        ab = abs(b)
+        if ab >= 1024*1024*1024:
+            return f"{b/(1024*1024*1024):.2f} GB"
+        if ab >= 1024*1024:
+            return f"{b/(1024*1024):.2f} MB"
+        if ab >= 1024:
+            return f"{b/1024:.2f} kB"
+        return f"{int(b)} B"
+
+    def _fmt_rate(self, bytes_per_sec: float) -> str:
+        absb = abs(bytes_per_sec)
+        if absb >= 1024*1024:
+            return f"{bytes_per_sec/(1024*1024):.1f} MB/s"
+        if absb >= 1024:
+            return f"{bytes_per_sec/1024:.1f} kB/s"
+        return f"{int(bytes_per_sec)} B/s"

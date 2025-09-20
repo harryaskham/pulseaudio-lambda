@@ -230,6 +230,7 @@ var (
     btnStyle     = lipgloss.NewStyle().Padding(0,1).Foreground(nord4).Background(nord2)
     btnOnStyle   = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord10)
     warnStyle    = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord11)
+    panelStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(nord3).Padding(0, 1).Margin(0, 0, 1, 0)
 )
 
 func (m model) Init() tea.Cmd {
@@ -256,46 +257,59 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             if m.focused > 0 { m.focused-- }
         case "down":
             m.focused++
-            if m.focused > 21 { m.focused = 21 }
+            if m.focused > 19 { m.focused = 19 }
         case "left":
+            // Per-stem focus order: vol, mute, solo
+            if m.focused >= 0 && m.focused < 12 {
+                stem := m.focused / 3
+                which := m.focused % 3
+                if which == 0 {
+                    m.gain[stem].Dec(); m.cfg.Gains[stem] = m.gain[stem].Value; return m, m.scheduleSave()
+                }
+            }
             switch m.focused {
-            case 0,1,2,3:
-                m.gain[m.focused].Dec(); m.cfg.Gains[m.focused] = m.gain[m.focused].Value; return m, m.scheduleSave()
-            case 12:
-                m.chunk.Dec(); m.cfg.ChunkSecs = round1(m.chunk.Value); return m, m.scheduleSave()
             case 13:
+                m.chunk.Dec(); m.cfg.ChunkSecs = round1(m.chunk.Value); return m, m.scheduleSave()
+            case 14:
                 m.overlap.Dec(); m.cfg.OverlapSecs = round1(m.overlap.Value); return m, m.scheduleSave()
             }
         case "right":
+            if m.focused >= 0 && m.focused < 12 {
+                stem := m.focused / 3
+                which := m.focused % 3
+                if which == 0 {
+                    m.gain[stem].Inc(); m.cfg.Gains[stem] = m.gain[stem].Value; return m, m.scheduleSave()
+                }
+            }
             switch m.focused {
-            case 0,1,2,3:
-                m.gain[m.focused].Inc(); m.cfg.Gains[m.focused] = m.gain[m.focused].Value; return m, m.scheduleSave()
-            case 12:
-                m.chunk.Inc(); m.cfg.ChunkSecs = round1(m.chunk.Value); return m, m.scheduleSave()
             case 13:
+                m.chunk.Inc(); m.cfg.ChunkSecs = round1(m.chunk.Value); return m, m.scheduleSave()
+            case 14:
                 m.overlap.Inc(); m.cfg.OverlapSecs = round1(m.overlap.Value); return m, m.scheduleSave()
             }
         case "enter", " ":
-            switch m.focused {
-            case 4,5,6,7: // mute
-                i := m.focused-4
-                m.cfg.ToggleMute(i)
-                return m, m.scheduleSave()
-            case 8,9,10,11: // solo
-                i := m.focused-8
-                m.cfg.ToggleSolo(i)
-                return m, m.scheduleSave()
-            case 14:
-                m.cfg.Device = "cpu"; return m, m.scheduleSave()
-            case 15:
-                m.cfg.Device = "cuda"; return m, m.scheduleSave()
-            case 16:
-                m.cfg.Normalize = !m.cfg.Normalize; return m, m.scheduleSave()
-            case 18: m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
-            case 19: m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
-            case 20: _ = saveConfig(m.cfg); return m, nil
+            if m.focused >= 0 && m.focused < 12 {
+                stem := m.focused / 3
+                which := m.focused % 3
+                if which == 1 { // mute
+                    m.cfg.ToggleMute(stem)
+                    return m, m.scheduleSave()
+                } else if which == 2 { // solo
+                    m.cfg.ToggleSolo(stem)
+                    return m, m.scheduleSave()
+                }
             }
-        case "s": _ = saveConfig(m.cfg); return m, nil
+            switch m.focused {
+            case 15:
+                m.cfg.Device = "cpu"; return m, m.scheduleSave()
+            case 16:
+                m.cfg.Device = "cuda"; return m, m.scheduleSave()
+            case 17:
+                m.cfg.Normalize = !m.cfg.Normalize; return m, m.scheduleSave()
+            case 12: m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
+            case 18: m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
+            }
+        // no explicit save button/hotkey; autosave is default
         case "r": m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
         case "e": m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
         }
@@ -324,7 +338,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     }
 
     // textinput update when focused
-    if m.focused == 17 {
+    if m.focused == 19 {
         var cmd tea.Cmd
         old := m.chkpt.Value()
         m.chkpt, cmd = m.chkpt.Update(msg)
@@ -339,67 +353,75 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-    w := max(60, m.width-4)
+    w := max(60, m.width-6) // leave some room for panel padding
     b := &strings.Builder{}
     fmt.Fprintln(b, titleStyle.Render("paλ-stem-separator"))
 
     // Live Stats
-    fmt.Fprintln(b, sectionStyle.Render("Live Stats"))
-    // Latency bar (target 500ms scale)
+    sb := &strings.Builder{}
+    fmt.Fprintln(sb, sectionStyle.Render("Live Stats"))
+    // Latency bar (target 45s scale) with chunk marker
     latency := m.stats.LatencySecs
-    fmt.Fprintln(b, "  Latency:")
-    fmt.Fprintln(b, "   "+renderBar(latency/0.5, w-6, latencyLabel(latency), latencyColor(latency)))
-    // Throughput
-    fmt.Fprintf(b, "  In:  %6.1f kB/s    Out: %6.1f kB/s\n", m.inKBps, m.outKBps)
-    // Real-time factor
-    fmt.Fprintln(b, "  Processing Speed:")
-    fmt.Fprintln(b, "   "+renderBar(m.rtf/1.0, w-6, fmt.Sprintf("RTF %.2f", m.rtf), rtfColor(m.rtf)))
+    fmt.Fprintln(sb, "  Latency:")
+    fmt.Fprintln(sb, "   "+renderBarWithMarker(latency/45.0, w-6, latencyLabel(latency), latencyColor(latency), m.cfg.ChunkSecs/45.0))
+    // Throughput and speed
+    fmt.Fprintf(sb, "  %s    %s    RTF: %.2fx\n", formatRate("In", m.inKBps*1024), formatRate("Out", m.outKBps*1024), m.rtf)
+    // Raw totals
+    fmt.Fprintf(sb, "  Input:     %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.InputBytes), formatInt(m.stats.InputSamples), m.stats.InputSecs)
+    fmt.Fprintf(sb, "  Processed: %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.ProcessedBytes), formatInt(m.stats.ProcessedSamples), m.stats.ProcessedSecs)
+    fmt.Fprintf(sb, "  Output:    %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.OutputBytes), formatInt(m.stats.OutputSamples), m.stats.OutputSecs)
+    fmt.Fprintln(b, panelStyle.Render(sb.String()))
 
     // Volume Controls
-    fmt.Fprintln(b, sectionStyle.Render("Stem Volumes"))
+    sb = &strings.Builder{}
+    fmt.Fprintln(sb, sectionStyle.Render("Stem Volumes"))
     for i := 0; i < 4; i++ {
+        volIdx := 3*i + 0
+        muteIdx := 3*i + 1
+        soloIdx := 3*i + 2
         line := m.gain[i].Render(w)
-        if m.focused == i { line = focusStyle.Render(line) }
-        fmt.Fprintln(b, " "+line)
+        if m.focused == volIdx { line = focusStyle.Render(line) }
+        fmt.Fprintln(sb, " "+line)
         // mute / solo as single-line toggles
-        mute := renderToggle("Mute", m.cfg.Muted[i], m.focused == 4+i, nord11, nord4)
-        solo := renderToggle("Solo", m.cfg.Soloed[i], m.focused == 8+i, nord13, nord4)
+        mute := renderToggle("Mute", m.cfg.Muted[i], m.focused == muteIdx, nord11, nord4)
+        solo := renderToggle("Solo", m.cfg.Soloed[i], m.focused == soloIdx, nord13, nord4)
         btns := lipgloss.JoinHorizontal(lipgloss.Top, mute, "  ", solo)
-        fmt.Fprintln(b, "   "+btns)
+        fmt.Fprintln(sb, "   "+btns)
     }
-    // Reset
+    // Reset (placed immediately after volumes)
     reset := btnStyle.Render("Reset All Volumes")
-    if m.focused == 18 { reset = focusStyle.Render(reset) }
-    fmt.Fprintln(b, "  "+reset)
+    if m.focused == 12 { reset = focusStyle.Render(reset) }
+    fmt.Fprintln(sb, "  "+reset)
+    fmt.Fprintln(b, panelStyle.Render(sb.String()))
 
     // Processing settings
-    fmt.Fprintln(b, sectionStyle.Render("Processing Settings"))
-    line := m.chunk.Render(w); if m.focused==12 { line = focusStyle.Render(line) }; fmt.Fprintln(b, " "+line)
-    line = m.overlap.Render(w); if m.focused==13 { line = focusStyle.Render(line) }; fmt.Fprintln(b, " "+line)
+    sb = &strings.Builder{}
+    fmt.Fprintln(sb, sectionStyle.Render("Processing Settings"))
+    line := m.chunk.Render(w); if m.focused==13 { line = focusStyle.Render(line) }; fmt.Fprintln(sb, " "+line)
+    line = m.overlap.Render(w); if m.focused==14 { line = focusStyle.Render(line) }; fmt.Fprintln(sb, " "+line)
     // Device
-    cpu := renderRadio("CPU", m.cfg.Device=="cpu", m.focused==14)
-    cuda := renderRadio("CUDA", m.cfg.Device=="cuda", m.focused==15)
+    cpu := renderRadio("CPU", m.cfg.Device=="cpu", m.focused==15)
+    cuda := renderRadio("CUDA", m.cfg.Device=="cuda", m.focused==16)
     deviceBtns := lipgloss.JoinHorizontal(lipgloss.Top, cpu, "  ", cuda)
-    fmt.Fprintln(b, "  Device: "+deviceBtns)
+    fmt.Fprintln(sb, "  Device: "+deviceBtns)
     // Normalize
-    norm := renderToggle("Normalize", m.cfg.Normalize, m.focused==16, nord14, nord4)
-    fmt.Fprintln(b, "  "+norm)
+    norm := renderToggle("Normalize", m.cfg.Normalize, m.focused==17, nord14, nord4)
+    fmt.Fprintln(sb, "  "+norm)
     // Empty queues
-    empty := btnStyle.Render("Empty Queues"); if m.focused==19 { empty = focusStyle.Render(empty) }
-    fmt.Fprintln(b, "  "+empty)
+    empty := btnStyle.Render("Empty Queues"); if m.focused==18 { empty = focusStyle.Render(empty) }
+    fmt.Fprintln(sb, "  "+empty)
+    fmt.Fprintln(b, panelStyle.Render(sb.String()))
 
     // Checkpoint
-    fmt.Fprintln(b, sectionStyle.Render("Model Checkpoint"))
-    ti := m.chkpt.View(); if m.focused==17 { ti = focusStyle.Render(ti) }
-    fmt.Fprintln(b, "  "+ti)
-
-    // Save
-    saveBtn := btnStyle.Render("Save Configuration"); if m.focused==20 { saveBtn = focusStyle.Render(saveBtn) }
-    fmt.Fprintln(b, "  "+saveBtn)
+    sb = &strings.Builder{}
+    fmt.Fprintln(sb, sectionStyle.Render("Model Checkpoint"))
+    ti := m.chkpt.View(); if m.focused==19 { ti = focusStyle.Render(ti) }
+    fmt.Fprintln(sb, "  "+ti)
+    fmt.Fprintln(b, panelStyle.Render(sb.String()))
 
     // Help
     fmt.Fprintln(b, "")
-    fmt.Fprintln(b, lipgloss.NewStyle().Faint(true).Render("↑/↓ navigate  ←/→ adjust  Enter toggle  s save  r reset  e empty  q quit"))
+    fmt.Fprintln(b, lipgloss.NewStyle().Faint(true).Render("↑/↓ navigate  ←/→ adjust  Enter toggle  r reset  e empty  q quit"))
     return b.String()
 }
 
@@ -465,23 +487,80 @@ func renderBar(ratio float64, width int, label string, color lipgloss.Color) str
     return style.Render(fmt.Sprintf("[%s] %s", bar, label))
 }
 
-func latencyLabel(s float64) string { return fmt.Sprintf("%.0f ms", s*1000) }
-func latencyColor(s float64) lipgloss.Color {
-    if s > 0.4 { return nord11 } // red
-    if s > 0.2 { return nord13 } // amber
-    return nord14                 // green
+func renderBarWithMarker(ratio float64, width int, label string, color lipgloss.Color, markerRatio float64) string {
+    if width < 10 { width = 10 }
+    r := clamp(ratio, 0, 1)
+    filled := int(math.Round(r * float64(width)))
+    if filled > width { filled = width }
+    barRunes := []rune(strings.Repeat("█", filled) + strings.Repeat("░", width-filled))
+    mpos := int(math.Round(clamp(markerRatio, 0, 1) * float64(width-1)))
+    if mpos >= 0 && mpos < len(barRunes) {
+        barRunes[mpos] = '│'
+    }
+    style := lipgloss.NewStyle().Foreground(color)
+    return style.Render(fmt.Sprintf("[%s] %s", string(barRunes), label))
 }
-func rtfColor(v float64) lipgloss.Color {
-    if v < 0.9 { return nord11 } // red if slower than real-time
-    if v < 1.0 { return nord13 } // amber nearing
-    return nord14
+
+func latencyLabel(s float64) string { return fmt.Sprintf("%.2f s", s) }
+func latencyColor(s float64) lipgloss.Color {
+    if s >= 45.0 { return nord11 } // red at/exceed max window
+    if s >= 40.0 { return nord13 } // amber when approaching end
+    return nord14                 // green
 }
 func maxf(a, b float64) float64 { if a>b {return a}; return b }
 
+// Formatting helpers
+func formatBytes(b float64) string {
+    abs := math.Abs(b)
+    unit := "B"
+    val := b
+    if abs >= 1024*1024*1024 {
+        unit = "GB"; val = b / (1024*1024*1024)
+    } else if abs >= 1024*1024 {
+        unit = "MB"; val = b / (1024*1024)
+    } else if abs >= 1024 {
+        unit = "kB"; val = b / 1024
+    }
+    if unit == "B" {
+        return fmt.Sprintf("%.0f %s", val, unit)
+    }
+    return fmt.Sprintf("%.2f %s", val, unit)
+}
+
+func formatRate(prefix string, bytesPerSec float64) string {
+    // bytesPerSec may be derived from kB/s previously; normalize
+    abs := math.Abs(bytesPerSec)
+    unit := "B/s"
+    val := bytesPerSec
+    if abs >= 1024*1024 {
+        unit = "MB/s"; val = bytesPerSec / (1024*1024)
+    } else if abs >= 1024 {
+        unit = "kB/s"; val = bytesPerSec / 1024
+    }
+    return fmt.Sprintf("%s %s %s", prefix, fmt.Sprintf("%.1f", val), unit)
+}
+
+func formatInt(n float64) string {
+    // format as integer with commas
+    x := int64(math.Round(n))
+    neg := x < 0
+    if neg { x = -x }
+    s := fmt.Sprintf("%d", x)
+    var out []byte
+    for i, c := range []byte(s) {
+        out = append(out, c)
+        if (len(s)-i-1)%3 == 0 && i != len(s)-1 {
+            out = append(out, ',')
+        }
+    }
+    if neg { return "-" + string(out) }
+    return string(out)
+}
+
 func main() {
     m := initialModel()
-    // Kick off stats polling immediately
-    p := tea.NewProgram(m, tea.WithAltScreen())
+    // Kick off stats polling immediately and enable mouse tracking
+    p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
     if _, err := p.Run(); err != nil {
         fmt.Fprintf(os.Stderr, "error: %v\n", err)
         os.Exit(1)

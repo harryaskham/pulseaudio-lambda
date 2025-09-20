@@ -18,6 +18,7 @@ from pal_stem_separator.stream_separator_args import Args
 from pal_stem_separator.stream_separator_utils import expand_path
 from pal_stem_separator.ui.stream_separator_ui import run_gui, run_tui
 from pal_stem_separator.chunk import Chunk
+from pal_stem_separator.stats import Stats
 from pal_stem_separator.buffer_hs_tasnet import BufferHSTasNet, SampleSpec
 from pal_stem_separator import export_executorch
 
@@ -80,10 +81,10 @@ def audio_input_thread(input_queue, stats_queue, sample_spec):
                       remove_overlap_start=remove_overlap_start,
                       remove_overlap_end=remove_overlap_end))
 
-            stats_queue.put(Stats(StatsData(
+            stats_queue.put(Stats.create(
                 input_bytes=IntSum(num_bytes),
                 input_samples=IntSum(num_samples),
-                input_secs=IntSum(secs))))
+                input_secs=IntSum(secs)))
 
     except Exception as e:
         logging.error(f"Processing error: {e}")
@@ -160,14 +161,14 @@ def audio_output_thread(output_queue, stats_queue, sample_spec):
                     chunk_or_data.output_completed_at = datetime.datetime.now()
                     chunk_or_data.log_timing()
 
-                    stats_queue.put(Stats(StatsData(
+                    stats_queue.put(Stats.create(
                         latency_secs=FloatLast(chunk_or_data.latency_secs),
                         processed_bytes=FloatSum(sample_spec.secs_to_bytes(chunk_or_data.processed_duration_secs)),
                         processed_samples=FloatSum(sample_spec.secs_to_samples(chunk_or_data.processed_duration_secs)),
                         processed_secs=FloatSum(chunk_or_data.processed_duration_secs),
                         output_bytes=FloatSum(sample_spec.secs_to_bytes(chunk_or_data.truncated_duration_secs)),
                         output_samples=FloatSum(sample_spec.secs_to_samples(chunk_or_data.truncated_duration_secs)),
-                        output_secs=FloatSum(chunk_or_data.truncated_duration_secs))))
+                        output_secs=FloatSum(chunk_or_data.truncated_duration_secs)))
 
                     continue
 
@@ -239,12 +240,14 @@ class FloatSum(Value[float], Monoid[float]):
     def mappend(self, other: Self) -> Self:
         return self.modify(lambda n: n + other.get())
 
-class FloatLast(Value[float], Monoid[float]):
+class FloatLast(Value[float | None], Monoid[float | None]):
     @classmethod
     def mempty(cls) -> Self:
-        return cls(0.0)
+        return cls(None)
     def mappend(self, other: Self) -> Self:
-        return other
+        if other.get() is not None:
+            return other
+        return self
 
 @dataclasses.dataclass
 class StatsData:
@@ -260,7 +263,7 @@ class StatsData:
     output_samples: IntSum = dataclasses.field(default_factory=lambda: IntSum(0))
     output_secs: FloatSum = dataclasses.field(default_factory=lambda: FloatSum(0.0))
 
-    latency_secs: FloatLast = dataclasses.field(default_factory=lambda: FloatLast(0.0))
+    latency_secs: FloatLast = dataclasses.field(default_factory=lambda: FloatLast(None))
 
 class Stats(Value[StatsData], Monoid[StatsData]):
     @classmethod

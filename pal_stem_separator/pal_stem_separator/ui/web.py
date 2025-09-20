@@ -177,10 +177,22 @@ HTML = """
     window.addEventListener('DOMContentLoaded', loadConfig);
 
     // --- Stats ---
-    function fmtBytesPerSec(kbps) { return `${kbps.toFixed(1)} kB/s`; }
-    function fmtLatency(s) { return `${Math.round(s*1000)} ms`; }
-    function fmtRTF(v) { return `RTF ${v.toFixed(2)}`; }
     function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+    function fmtLatency(s) { return `${(s||0).toFixed(2)} s`; }
+    function fmtRTF(v) { return `RTF ${(v||0).toFixed(2)}x`; }
+    function fmtBytes(b) {
+      const abs = Math.abs(b||0);
+      if (abs >= 1024*1024*1024) return `${(b/(1024*1024*1024)).toFixed(2)} GB`;
+      if (abs >= 1024*1024) return `${(b/(1024*1024)).toFixed(2)} MB`;
+      if (abs >= 1024) return `${(b/1024).toFixed(2)} kB`;
+      return `${Math.round(b||0)} B`;
+    }
+    function fmtRate(bytesPerSec) {
+      const abs = Math.abs(bytesPerSec||0);
+      if (abs >= 1024*1024) return `${(bytesPerSec/(1024*1024)).toFixed(1)} MB/s`;
+      if (abs >= 1024) return `${(bytesPerSec/1024).toFixed(1)} kB/s`;
+      return `${Math.round(bytesPerSec||0)} B/s`;
+    }
 
     async function loadStats() {
       try {
@@ -189,25 +201,37 @@ HTML = """
         const now = Date.now() / 1000;
         if (prevStats && prevStatsAt) {
           const dt = Math.max(0.001, now - prevStatsAt);
-          const inKBps = Math.max(0, (stats.input_bytes - prevStats.input_bytes) / dt / 1024);
-          const outKBps = Math.max(0, (stats.output_bytes - prevStats.output_bytes) / dt / 1024);
+          const inBps = Math.max(0, (stats.input_bytes - prevStats.input_bytes) / dt);
+          const outBps = Math.max(0, (stats.output_bytes - prevStats.output_bytes) / dt);
           const rtf = Math.max(0, (stats.processed_secs - prevStats.processed_secs) / dt);
           // Update DOM
-          document.getElementById('in_kbps').textContent = fmtBytesPerSec(inKBps);
-          document.getElementById('out_kbps').textContent = fmtBytesPerSec(outKBps);
+          document.getElementById('in_rate').textContent = fmtRate(inBps);
+          document.getElementById('out_rate').textContent = fmtRate(outBps);
           // Latency bar
           const lat = stats.latency_secs || 0;
-          const latRatio = clamp(lat / 0.5, 0, 1);
+          const latRatio = clamp(lat / 45.0, 0, 1);
           const latEl = document.getElementById('latency_bar_fill');
           latEl.style.width = `${Math.round(latRatio*100)}%`;
-          latEl.style.background = lat > 0.4 ? '#ef4444' : (lat > 0.2 ? '#f59e0b' : '#22c55e');
+          latEl.style.background = lat >= 45.0 ? '#ef4444' : (lat >= 40.0 ? '#f59e0b' : '#22c55e');
           document.getElementById('latency_label').textContent = fmtLatency(lat);
-          // RTF bar
-          const rtfRatio = clamp(rtf / 1.0, 0, 1);
-          const rtfEl = document.getElementById('rtf_bar_fill');
-          rtfEl.style.width = `${Math.round(rtfRatio*100)}%`;
-          rtfEl.style.background = rtf < 0.9 ? '#ef4444' : (rtf < 1.0 ? '#f59e0b' : '#22c55e');
+          // RTF label
           document.getElementById('rtf_label').textContent = fmtRTF(rtf);
+          // Chunk marker position
+          const cm = document.getElementById('chunk_marker');
+          if (cm && config && typeof config.chunk_secs === 'number') {
+            const cr = clamp(config.chunk_secs / 45.0, 0, 1);
+            cm.style.left = `${Math.round(cr*100)}%`;
+            cm.style.display = 'block';
+          }
+          // Raw totals
+          const raw = document.getElementById('raw_totals');
+          if (raw) {
+            raw.innerHTML = `
+              <div>Input: ${fmtBytes(stats.input_bytes)} &nbsp; ${(stats.input_samples||0).toLocaleString()} samples &nbsp; ${(stats.input_secs||0).toFixed(2)} s</div>
+              <div>Processed: ${fmtBytes(stats.processed_bytes)} &nbsp; ${(stats.processed_samples||0).toLocaleString()} samples &nbsp; ${(stats.processed_secs||0).toFixed(2)} s</div>
+              <div>Output: ${fmtBytes(stats.output_bytes)} &nbsp; ${(stats.output_samples||0).toLocaleString()} samples &nbsp; ${(stats.output_secs||0).toFixed(2)} s</div>
+            `;
+          }
         }
         prevStats = stats;
         prevStatsAt = now;
@@ -227,22 +251,18 @@ HTML = """
         <h2>Live Stats</h2>
         <div class="row"><label>Latency</label>
           <div style="flex:1; display:flex; align-items:center; gap:8px;">
-            <div style="flex:1; height:10px; background:#eee; border-radius:6px; overflow:hidden;">
+            <div style="flex:1; height:10px; background:#eee; border-radius:6px; overflow:hidden; position:relative;">
               <div id="latency_bar_fill" style="height:100%; width:0%; background:#22c55e"></div>
+              <div id="chunk_marker" style="position:absolute; top:-2px; bottom:-2px; width:2px; background:#81A1C1; display:none;"></div>
             </div>
-            <div id="latency_label" style="width:70px; text-align:right;">0 ms</div>
+            <div id="latency_label" style="width:70px; text-align:right;">0.00 s</div>
           </div>
         </div>
         <div class="row"><label>Throughput</label>
-          <div>In <span id="in_kbps">0.0 kB/s</span> &nbsp; Out <span id="out_kbps">0.0 kB/s</span></div>
+          <div>In <span id="in_rate">0 B/s</span> &nbsp; Out <span id="out_rate">0 B/s</span> &nbsp; <span id="rtf_label">RTF 0.00x</span></div>
         </div>
-        <div class="row"><label>Speed</label>
-          <div style="flex:1; display:flex; align-items:center; gap:8px;">
-            <div style="flex:1; height:10px; background:#eee; border-radius:6px; overflow:hidden;">
-              <div id="rtf_bar_fill" style="height:100%; width:0%; background:#22c55e"></div>
-            </div>
-            <div id="rtf_label" style="width:80px; text-align:right;">RTF 0.00</div>
-          </div>
+        <div class="row"><label>Raw Totals</label>
+          <div id="raw_totals" style="display:flex; flex-direction:column; gap:4px; font-size: 13px;"></div>
         </div>
       </div>
 
