@@ -80,10 +80,10 @@ def audio_input_thread(input_queue, stats_queue, sample_spec):
                       remove_overlap_start=remove_overlap_start,
                       remove_overlap_end=remove_overlap_end))
 
-            stats_queue.put(StatsData(
-                input_secs=IntSum(secs),
+            stats_queue.put(Stats(StatsData(
                 input_bytes=IntSum(num_bytes),
-                input_samples=IntSum(num_samples)))
+                input_samples=IntSum(num_samples),
+                input_secs=IntSum(secs))))
 
     except Exception as e:
         logging.error(f"Processing error: {e}")
@@ -159,6 +159,16 @@ def audio_output_thread(output_queue, stats_queue, sample_spec):
                     logging.debug("Chunk completed")
                     chunk_or_data.output_completed_at = datetime.datetime.now()
                     chunk_or_data.log_timing()
+
+                    stats_queue.put(Stats(StatsData(
+                        latency_secs=FloatLast(chunk_or_data.latency_secs),
+                        processed_bytes=FloatSum(sample_spec.secs_to_bytes(chunk_or_data.processed_duration_secs)),
+                        processed_samples=FloatSum(sample_spec.secs_to_samples(chunk_or_data.processed_duration_secs)),
+                        processed_secs=FloatSum(chunk_or_data.processed_duration_secs),
+                        output_bytes=FloatSum(sample_spec.secs_to_bytes(chunk_or_data.truncated_duration_secs)),
+                        output_samples=FloatSum(sample_spec.secs_to_samples(chunk_or_data.truncated_duration_secs)),
+                        output_secs=FloatSum(chunk_or_data.truncated_duration_secs))))
+
                     continue
 
                 # Write to stdout
@@ -231,16 +241,24 @@ class FloatLast(Value[float], Monoid[float]):
 
 @dataclasses.dataclass
 class StatsData:
-    input_bytes: IntSum = dataclasses.field(default_factory=IntSum)
-    output_bytes: IntSum = dataclasses.field(default_factory=IntSum)
-    input_samples: IntSum = dataclasses.field(default_factory=IntSum)
-    output_samples: IntSum = dataclasses.field(default_factory=IntSum)
-    latency_secs: FloatLast = dataclasses.field(default_factory=FloatLast)
+    input_bytes: IntSum = dataclasses.field(default_factory=lambda: IntSum(0))
+    input_samples: IntSum = dataclasses.field(default_factory=lambda: IntSum(0))
+    input_secs: FloatSum = dataclasses.field(default_factory=lambda: FloatSum(0.0))
+
+    processed_bytes: IntSum = dataclasses.field(default_factory=lambda: IntSum(0))
+    processed_samples: IntSum = dataclasses.field(default_factory=lambda: IntSum(0))
+    processed_secs: FloatSum = dataclasses.field(default_factory=lambda: FloatSum(0.0))
+
+    output_bytes: IntSum = dataclasses.field(default_factory=lambda: IntSum(0))
+    output_samples: IntSum = dataclasses.field(default_factory=lambda: IntSum(0))
+    output_secs: FloatSum = dataclasses.field(default_factory=lambda: FloatSum(0.0))
+
+    latency_secs: FloatLast = dataclasses.field(default_factory=lambda: FloatLast(0.0))
 
 class Stats(Value[StatsData], Monoid[StatsData]):
     @classmethod
     def mempty(cls) -> Self:
-        return cls(value=StatsData())
+        return cls(StatsData())
 
     def mappend(self, other: Self) -> Self:
         self_dict = dataclasses.asdict(self.get())
@@ -263,7 +281,7 @@ def stats_output_thread(stats_queue):
     while True:
         args = Args.get_live()
         try:
-            logging.debug(f"stats: {new_stats}")
+            logging.debug(f"stats: {stats}")
             new_stats = stats_queue.get()
             logging.debug(f"mappending stats: {new_stats}")
             stats = stats.mappend(stats, new_stats)
