@@ -38,13 +38,7 @@
         inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
 
-        # Base Python for pyproject-nix (Tk handled via lazy imports/fallback)
         python = pkgs.python312;
-        # python = pkgs.python312.override (old: {
-        #   interpreter = old.withPackages (ps: with ps; [
-        #     tkinter
-        #   ]);
-        # });
 
         hacks = pkgs.callPackage pyproject-nix.build.hacks {};
         pyprojectOverlay = final: prev:
@@ -55,11 +49,24 @@
                 prev = prev.${name};
               };
             };
+            fromNixpkgsRenamed = lib.concatMapAttrs (pyName: nixName: {
+              ${pyName} = hacks.nixpkgsPrebuilt {
+                from = python.pkgs.${nixName};
+                prev = prev.${pyName};
+              };
+            });
             fromNixpkgs = names: lib.mergeAttrsList (map fromNixpkgs1 names);
             patchElfs = names: lib.genAttrs names (name: prev.${name}.overrideAttrs (old: {
               autoPatchelfIgnoreMissingDeps = true;
             }));
           in {
+            # Patch qt to find qt
+            qtpy = prev.qtpy.overrideAttrs (old: {
+              #nativeBuildInputs = (old.nativeBuildInputs or []) ++ [ pkgs.libsForQt5.wrapQtAppsHook ];
+              dontWrapQtApps = true;
+              propagatedBuildInputs = (old.propagatedBuildInputs or []) ++ [ pkgs.qt5.qtbase ];
+            });
+
             # Patch stempeg to find ffmpeg binaries
             stempeg = prev.stempeg.overrideAttrs (old: {
               postInstall = (old.postInstall or "") + ''
@@ -83,7 +90,16 @@
               '';
             });
             
-          } // (patchElfs [
+          } // (fromNixpkgs [
+            "proxy-tools"
+            "pycairo"
+            "ninja"
+            "setuptools"
+            #"qtpy"
+          ]) // (fromNixpkgsRenamed {
+            "pygobject" = "pygobject3";
+            "mesonpy" = "meson";
+          }) // (patchElfs [
             "torch"
             "torchaudio"
             "torchcodec"
@@ -131,22 +147,50 @@
         pal-stem-separator-venv =
           pythonSet.mkVirtualEnv "pal_stem_separator" workspace.deps.default;
 
+        deps = with pkgs; [
+          pkg-config
+          meson
+          ninja
+          jo
+          jq
+          libffi
+          openssl
+          stdenv.cc.cc
+          stdenv.cc.cc.lib
+          gcc.cc
+          zlib
+          zlib.dev
+          portaudio
+          ffmpeg
+          ffmpeg.lib
+          # Web GUI runtime deps for pywebview (GTK backend)
+          qt5.qtbase
+          qtcreator
+          cairo
+          gtk3
+          webkitgtk_4_1
+          pythonSet.pygobject
+          gobject-introspection
+          glib
+          glib-networking
+        ];
+
+        setLD = extraDeps: ''export LD_LIBRARY_PATH="${lib.makeLibraryPath (deps ++ extraDeps)}:$LD_LIBRARY_PATH"'';
+
       in rec {
         devShells = {
           default = pkgs.mkShell {
-            packages = with pkgs; [ 
-              packages.all
-              pal-stem-separator-venv
-              uv
-            ];
+            packages = with pkgs; [ pal-stem-separator-venv uv ];
 
             env = {
               UV_NO_SYNC = "1";
               UV_PYTHON_DOWNLOADS = "never";
             };
 
+            propagatedBuildInputs = deps;
+
             shellHook = ''
-              export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              ${setLD []}
               unset PYTHONPATH
               export REPO_ROOT=$(git rev-parse --show-toplevel)
             '';
@@ -173,34 +217,30 @@
             };
 
             pal-stem-separator = pkgs.runCommand "pal-stem-separator" {
-              propagatedBuildInputs = with pkgs; [
+              propagatedBuildInputs = deps ++ (with pkgs; [
                 makeWrapper
                 app
-                pkg-config
-                jo
-                jq
-                libffi
-                openssl
-                stdenv.cc.cc
-                stdenv.cc.cc.lib
-                gcc.cc
-                zlib
-                zlib.dev
-                portaudio
-                ffmpeg
-                ffmpeg.lib
-              ];
+              ]);
             } ''
               mkdir -p $out/bin
               
               # Create a wrapper script that preloads portaudio
               cat > $out/bin/pal-stem-separator << 'EOF'
               #!/usr/bin/env bash
-              export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.ffmpeg.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              #export LD_LIBRARY_PATH="${pkgs.portaudio}/lib:${pkgs.ffmpeg.lib}/lib:${pkgs.gtk3}/lib:${pkgs.webkitgtk_4_1}/lib:${pkgs.glib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              ${setLD []}
               export PATH="${pkgs.ffmpeg}/bin''${PATH:+:$PATH}"
 
               # Preload portaudio so sounddevice can find it
               export LD_PRELOAD="${pkgs.portaudio}/lib/libportaudio.so.2''${LD_PRELOAD:+:$LD_PRELOAD}"
+
+              # GI and GTK environment for pywebview (GTK backend)
+              export GI_TYPELIB_PATH="${pkgs.gobject-introspection}/lib/girepository-1.0:${pkgs.webkitgtk_4_1}/lib/girepository-1.0''${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+              export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"
+              export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share:${pkgs.gtk3}/share''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+
+              # Ensure gi (PyGObject) is visible to the venv
+              export PYTHONPATH="${pkgs.python312Packages.pygobject3}/lib/python3.12/site-packages''${PYTHONPATH:+:$PYTHONPATH}"
               
               exec ${app}/bin/pal-stem-separator "$@"
               EOF

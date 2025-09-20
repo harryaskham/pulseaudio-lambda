@@ -17,6 +17,10 @@ dependencies = [
     "textual>=0.40.0",
     "starlette>=0.37",
     "uvicorn>=0.23",
+    "pywebview>=4.4",
+    "pycairo>=1.28.0",
+    "pygobject>=3.50",
+    "qtpy>=2.4.3",
 
     "torch==2.8.0",
     "torchaudio==2.8.0",

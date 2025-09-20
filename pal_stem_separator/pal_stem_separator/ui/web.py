@@ -83,8 +83,8 @@ HTML = """
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Stream Separator Configuration</title>
+  <meta name="viewport" content="wdth=device-width, initial-scale=1" />
+  <title>PA&lambda;-stem-separator</title>
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; }
     .container { max-width: 800px; margin: 0 auto; padding: 16px; }
@@ -167,7 +167,7 @@ HTML = """
   </head>
   <body>
     <div class="container">
-      <h1>Stream Separator Configuration</h1>
+      <h1>pa&lambda;-stem-separator</h1>
       <div id="status" class="status"></div>
 
       <div class="section">
