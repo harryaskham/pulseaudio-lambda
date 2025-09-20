@@ -232,6 +232,13 @@ class IntSum(Value[int], Monoid[int]):
     def mappend(self, other: Self) -> Self:
         return self.modify(lambda n: n + other.get())
 
+class FloatSum(Value[float], Monoid[float]):
+    @classmethod
+    def mempty(cls) -> Self:
+        return cls(0.0)
+    def mappend(self, other: Self) -> Self:
+        return self.modify(lambda n: n + other.get())
+
 class FloatLast(Value[float], Monoid[float]):
     @classmethod
     def mempty(cls) -> Self:
