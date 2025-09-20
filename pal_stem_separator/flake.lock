@@ -52,7 +52,7 @@
         "type": "github"
       }
     },
-    "pal-stem-separator-tui": {
+    "pal-stem-separator-tui-flake": {
       "inputs": {
         "flake-utils": "flake-utils_2",
         "nixpkgs": [
@@ -119,7 +119,7 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "pal-stem-separator-tui": "pal-stem-separator-tui",
+        "pal-stem-separator-tui-flake": "pal-stem-separator-tui-flake",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",
         "uv2nix": "uv2nix"

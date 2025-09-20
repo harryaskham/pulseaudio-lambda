@@ -22,7 +22,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    pal-stem-separator-tui = {
+    pal-stem-separator-tui-flake = {
       url = "path:./tui";
       inputs.nixpkgs.follows = "nixpkgs";
     };
@@ -36,15 +36,13 @@
       uv2nix,
       pyproject-nix,
       pyproject-build-systems,
-      pal-stem-separator-tui,
+      pal-stem-separator-tui-flake,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         inherit (nixpkgs) lib;
         pkgs = nixpkgs.legacyPackages.${system};
-
-        pal-stem-separator-tui-pkg = pal-stem-separator-tui.packages.${system}.default;
 
         python = pkgs.python312;
 
@@ -264,7 +262,7 @@
               exec ${pal-stem-separator}/bin/pal-stem-separator --gui --ui-only "$@"
             '';
 
-            pal-stem-separator-tui = pal-stem-separator-tui-pkg;
+            pal-stem-separator-tui = pal-stem-separator-tui-flake.packages.${system}.default;
 
             pal-stem-separator-tui-py = pkgs.writeShellScriptBin "pal-stem-separator-tui-py" ''
               exec ${pal-stem-separator}/bin/pal-stem-separator --tui --ui-only "$@"
