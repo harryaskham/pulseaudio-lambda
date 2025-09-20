@@ -257,6 +257,7 @@ class Args:
 
             del data['config_dir']
             del data['config_path']
+            del data['stats_path']
             del data['gui']
             del data['tui']
             del data['ui_only']

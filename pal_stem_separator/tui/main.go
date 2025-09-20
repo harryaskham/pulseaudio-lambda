@@ -7,11 +7,14 @@ import (
     tea "github.com/charmbracelet/bubbletea"
     "github.com/charmbracelet/bubbles/textinput"
     "github.com/charmbracelet/lipgloss"
+    "bytes"
     "io/fs"
     "math"
     "os"
+    "os/exec"
     "path/filepath"
     "strings"
+    "syscall"
     "time"
 )
 
@@ -188,6 +191,12 @@ type model struct {
     inKBps      float64
     outKBps     float64
     rtf         float64 // processed seconds per wall second
+
+    // mouse/hit testing
+    hits []hitArea
+
+    // service status
+    serviceRunning bool
 }
 
 func initialModel() model {
@@ -231,6 +240,8 @@ var (
     btnOnStyle   = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord10)
     warnStyle    = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord11)
     panelStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(nord3).Padding(0, 1).Margin(0, 0, 1, 0)
+    btnFocusStyle= lipgloss.NewStyle().Padding(0,1).Bold(true).Underline(true).Foreground(nord4).Background(nord3)
+    focusWrap    = lipgloss.NewStyle().Background(nord1)
 )
 
 func (m model) Init() tea.Cmd {
@@ -249,6 +260,61 @@ func (m *model) scheduleStats() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     switch msg := msg.(type) {
+    case tea.MouseMsg:
+        // Prefer new MouseAction/MouseButton if available; fallback to Type for compat
+        // Wheel over sliders adjusts that slider; otherwise scroll focus.
+        if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft || msg.Type == tea.MouseLeft {
+            for _, h := range m.hits {
+                if msg.X >= h.x1 && msg.X <= h.x2 && msg.Y >= h.y1 && msg.Y <= h.y2 {
+                    return m.handleHit(h, msg.X)
+                }
+            }
+            return m, nil
+        }
+        if msg.Action == tea.MouseActionMotion && msg.Button == tea.MouseButtonLeft || msg.Type == tea.MouseMotion {
+            // Dragging on a slider: update its value continuously
+            for _, h := range m.hits {
+                if (h.kind == hitSliderVolume || h.kind == hitSliderChunk || h.kind == hitSliderOverlap) &&
+                    msg.X >= h.x1 && msg.X <= h.x2 && msg.Y >= h.y1 && msg.Y <= h.y2 {
+                    return m.handleHit(h, msg.X)
+                }
+            }
+            return m, nil
+        }
+        if msg.Button == tea.MouseButtonWheelUp || msg.Type == tea.MouseWheelUp {
+            // If over a slider, adjust it; else move focus
+            for _, h := range m.hits {
+                if msg.X >= h.x1 && msg.X <= h.x2 && msg.Y >= h.y1 && msg.Y <= h.y2 {
+                    switch h.kind {
+                    case hitSliderVolume:
+                        m.gain[h.index].Inc(); m.cfg.Gains[h.index] = m.gain[h.index].Value; return m, m.scheduleSave()
+                    case hitSliderChunk:
+                        m.chunk.Inc(); m.cfg.ChunkSecs = round1(m.chunk.Value); return m, m.scheduleSave()
+                    case hitSliderOverlap:
+                        m.overlap.Inc(); m.cfg.OverlapSecs = round1(m.overlap.Value); return m, m.scheduleSave()
+                    }
+                }
+            }
+            if m.focused > 0 { m.focused-- }
+            return m, nil
+        }
+        if msg.Button == tea.MouseButtonWheelDown || msg.Type == tea.MouseWheelDown {
+            for _, h := range m.hits {
+                if msg.X >= h.x1 && msg.X <= h.x2 && msg.Y >= h.y1 && msg.Y <= h.y2 {
+                    switch h.kind {
+                    case hitSliderVolume:
+                        m.gain[h.index].Dec(); m.cfg.Gains[h.index] = m.gain[h.index].Value; return m, m.scheduleSave()
+                    case hitSliderChunk:
+                        m.chunk.Dec(); m.cfg.ChunkSecs = round1(m.chunk.Value); return m, m.scheduleSave()
+                    case hitSliderOverlap:
+                        m.overlap.Dec(); m.cfg.OverlapSecs = round1(m.overlap.Value); return m, m.scheduleSave()
+                    }
+                }
+            }
+            m.focused++
+            if m.focused > 19 { m.focused = 19 }
+            return m, nil
+        }
     case tea.KeyMsg:
         switch msg.String() {
         case "ctrl+c", "q":
@@ -257,7 +323,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             if m.focused > 0 { m.focused-- }
         case "down":
             m.focused++
-            if m.focused > 19 { m.focused = 19 }
+            if m.focused > m.maxFocus() { m.focused = m.maxFocus() }
         case "left":
             // Per-stem focus order: vol, mute, solo
             if m.focused >= 0 && m.focused < 12 {
@@ -308,10 +374,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 m.cfg.Normalize = !m.cfg.Normalize; return m, m.scheduleSave()
             case 12: m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
             case 18: m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
+            case 20:
+                if m.serviceRunning { stopServiceAsync() } else { startServiceAsync() }
+                return m, nil
             }
         // no explicit save button/hotkey; autosave is default
         case "r": m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
         case "e": m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
+        case "n": m.cfg.Normalize = !m.cfg.Normalize; return m, m.scheduleSave()
+        case "d":
+            i := 0; m.cycleStemState(i); return m, m.scheduleSave()
+        case "b":
+            i := 1; m.cycleStemState(i); return m, m.scheduleSave()
+        case "v":
+            i := 2; m.cycleStemState(i); return m, m.scheduleSave()
+        case "o":
+            i := 3; m.cycleStemState(i); return m, m.scheduleSave()
         }
     case tea.WindowSizeMsg:
         m.width = msg.Width; m.height = msg.Height
@@ -334,6 +412,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         m.prevStats = m.stats
         m.stats = s
         m.lastStatsAt = now
+        m.serviceRunning = isServiceRunning()
         return m, m.scheduleStats()
     }
 
@@ -352,10 +431,124 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     return m, nil
 }
 
+// Cycle a stem through: neither -> mute -> solo -> neither
+func (m *model) cycleStemState(i int) {
+    if i < 0 || i > 3 { return }
+    muted := m.cfg.Muted[i]
+    solo := m.cfg.Soloed[i]
+    if !muted && !solo {
+        m.cfg.Muted[i] = true
+        m.cfg.Soloed[i] = false
+    } else if muted {
+        m.cfg.Muted[i] = false
+        m.cfg.Soloed[i] = true
+    } else {
+        m.cfg.Muted[i] = false
+        m.cfg.Soloed[i] = false
+    }
+}
+
+type hitKind int
+const (
+    hitSliderVolume hitKind = iota
+    hitToggleMute
+    hitToggleSolo
+    hitBtnReset
+    hitSliderChunk
+    hitSliderOverlap
+    hitRadioCPU
+    hitRadioCUDA
+    hitToggleNormalize
+    hitBtnEmpty
+    hitTextCheckpoint
+    hitBtnStart
+    hitBtnStop
+)
+
+type hitArea struct { x1, y1, x2, y2 int; kind hitKind; index int; }
+
+func (m model) handleHit(h hitArea, clickX int) (tea.Model, tea.Cmd) {
+    switch h.kind {
+    case hitSliderVolume:
+        m.focused = 3*h.index + 0
+        // Map X to slider value. Bracket starts at x1.
+        barW := max(10, (m.width-6)-24)
+        clicked := clampf(float64(clickX-h.x1), 0, float64(barW-1))
+        // Compute value from click position
+        v := m.gain[h.index]
+        if v == nil { return m, nil }
+        ratio := clicked / float64(barW-1)
+        v.Value = v.Min + ratio*(v.Max-v.Min)
+        m.cfg.Gains[h.index] = v.Value
+        return m, m.scheduleSave()
+    case hitToggleMute:
+        m.focused = 3*h.index + 1
+        m.cfg.ToggleMute(h.index)
+        return m, m.scheduleSave()
+    case hitToggleSolo:
+        m.focused = 3*h.index + 2
+        m.cfg.ToggleSolo(h.index)
+        return m, m.scheduleSave()
+    case hitBtnReset:
+        m.focused = 12
+        m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }
+        return m, m.scheduleSave()
+    case hitSliderChunk:
+        m.focused = 13
+        barW := max(10, (m.width-6)-24)
+        clicked := clampf(float64(clickX-h.x1), 0, float64(barW-1))
+        ratio := clicked / float64(barW-1)
+        m.chunk.Value = m.chunk.Min + ratio*(m.chunk.Max-m.chunk.Min)
+        m.cfg.ChunkSecs = round1(m.chunk.Value)
+        return m, m.scheduleSave()
+    case hitSliderOverlap:
+        m.focused = 14
+        barW := max(10, (m.width-6)-24)
+        clicked := clampf(float64(clickX-h.x1), 0, float64(barW-1))
+        ratio := clicked / float64(barW-1)
+        m.overlap.Value = m.overlap.Min + ratio*(m.overlap.Max-m.overlap.Min)
+        m.cfg.OverlapSecs = round1(m.overlap.Value)
+        return m, m.scheduleSave()
+    case hitRadioCPU:
+        m.focused = 15
+        m.cfg.Device = "cpu"
+        return m, m.scheduleSave()
+    case hitRadioCUDA:
+        m.focused = 16
+        m.cfg.Device = "cuda"
+        return m, m.scheduleSave()
+    case hitToggleNormalize:
+        m.focused = 17
+        m.cfg.Normalize = !m.cfg.Normalize
+        return m, m.scheduleSave()
+    case hitBtnEmpty:
+        m.focused = 18
+        m.cfg.RequestEmptyQueues()
+        return m, m.scheduleSave()
+    case hitTextCheckpoint:
+        // Focus the text input
+        m.focused = 19
+        return m, nil
+    case hitBtnStart:
+        m.focused = 20
+        startServiceAsync()
+        return m, nil
+    case hitBtnStop:
+        m.focused = 20
+        stopServiceAsync()
+        return m, nil
+    }
+    return m, nil
+}
+
 func (m model) View() string {
-    w := max(60, m.width-6) // leave some room for panel padding
+    // Compute a conservative inner width so content never exceeds the viewport.
+    // Account for panel borders and padding; also cap bar widths to avoid overflow.
+    w := max(40, m.width-8)
     b := &strings.Builder{}
+    m.hits = nil
     fmt.Fprintln(b, titleStyle.Render("paλ-stem-separator"))
+    curY := 1 // title occupies first line
 
     // Live Stats
     sb := &strings.Builder{}
@@ -363,18 +556,50 @@ func (m model) View() string {
     // Latency bar (target 45s scale) with chunk marker
     latency := m.stats.LatencySecs
     fmt.Fprintln(sb, "  Latency:")
-    fmt.Fprintln(sb, "   "+renderBarWithMarker(latency/45.0, w-6, latencyLabel(latency), latencyColor(latency), m.cfg.ChunkSecs/45.0))
+    barW := max(10, w-10)
+    fmt.Fprintln(sb, "   "+renderBarWithMarker(latency/45.0, barW, latencyLabel(latency), latencyColor(latency), m.cfg.ChunkSecs/45.0))
     // Throughput and speed
     fmt.Fprintf(sb, "  %s    %s    RTF: %.2fx\n", formatRate("In", m.inKBps*1024), formatRate("Out", m.outKBps*1024), m.rtf)
     // Raw totals
     fmt.Fprintf(sb, "  Input:     %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.InputBytes), formatInt(m.stats.InputSamples), m.stats.InputSecs)
     fmt.Fprintf(sb, "  Processed: %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.ProcessedBytes), formatInt(m.stats.ProcessedSamples), m.stats.ProcessedSecs)
     fmt.Fprintf(sb, "  Output:    %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.OutputBytes), formatInt(m.stats.OutputSamples), m.stats.OutputSecs)
-    fmt.Fprintln(b, panelStyle.Render(sb.String()))
+    // Service status
+    if m.serviceRunning {
+        stopBtn := btnStyle.Render("Stop")
+        if m.focused == 20 { stopBtn = btnFocusStyle.Render("Stop") }
+        fmt.Fprintln(sb, "  Service: "+lipgloss.NewStyle().Foreground(nord14).Render("Running")+"  "+stopBtn)
+    } else {
+        startBtn := btnStyle.Render("Start")
+        if m.focused == 20 { startBtn = btnFocusStyle.Render("Start") }
+        fmt.Fprintln(sb, "  Service: "+lipgloss.NewStyle().Foreground(nord11).Render("Stopped")+"  "+startBtn)
+    }
+    // Service Start button hit area if stopped
+    if !m.serviceRunning {
+        // Approximate start button position: last line of sb
+        // We will add a broad hit area near the end of the panel line
+        // The precise position is estimated further below after printing panel
+    }
+    livePanel := panelStyle.Render(sb.String())
+    fmt.Fprintln(b, livePanel)
+    // advance Y by panel height (content lines + 2 borders + 1 margin)
+    liveLines := strings.Count(sb.String(), "\n") + 1
+    curY += liveLines + 3
+    // approximate a clickable region for Start/Stop on the last content line within the panel
+    btnY := curY - 3
+    if m.serviceRunning {
+        m.hits = append(m.hits, hitArea{ x1: 2, y1: btnY, x2: 2 + w, y2: btnY, kind: hitBtnStop })
+    } else {
+        m.hits = append(m.hits, hitArea{ x1: 2, y1: btnY, x2: 2 + w, y2: btnY, kind: hitBtnStart })
+    }
 
     // Volume Controls
     sb = &strings.Builder{}
     fmt.Fprintln(sb, sectionStyle.Render("Stem Volumes"))
+    baseY := curY + 1 // first content line inside panel
+    baseX := 2        // border + padding
+    lineOfs := 1      // after header
+    barW = max(10, w-10)
     for i := 0; i < 4; i++ {
         volIdx := 3*i + 0
         muteIdx := 3*i + 1
@@ -382,46 +607,83 @@ func (m model) View() string {
         line := m.gain[i].Render(w)
         if m.focused == volIdx { line = focusStyle.Render(line) }
         fmt.Fprintln(sb, " "+line)
+        // hit area for volume slider bar (inside brackets)
+        y := baseY + lineOfs
+        x1 := baseX + 1 + 15 + 1 // indent + label field + '[' inner start
+        x2 := x1 + barW - 1
+        m.hits = append(m.hits, hitArea{ x1: x1, y1: y, x2: x2, y2: y, kind: hitSliderVolume, index: i })
         // mute / solo as single-line toggles
         mute := renderToggle("Mute", m.cfg.Muted[i], m.focused == muteIdx, nord11, nord4)
         solo := renderToggle("Solo", m.cfg.Soloed[i], m.focused == soloIdx, nord13, nord4)
         btns := lipgloss.JoinHorizontal(lipgloss.Top, mute, "  ", solo)
         fmt.Fprintln(sb, "   "+btns)
+        // approximate hit areas for mute/solo
+        y2 := y + 1
+        m.hits = append(m.hits, hitArea{ x1: baseX + 3, y1: y2, x2: baseX + 3 + 10, y2: y2, kind: hitToggleMute, index: i })
+        m.hits = append(m.hits, hitArea{ x1: baseX + 3 + 12, y1: y2, x2: baseX + 3 + 22, y2: y2, kind: hitToggleSolo, index: i })
+        lineOfs += 2
     }
     // Reset (placed immediately after volumes)
     reset := btnStyle.Render("Reset All Volumes")
-    if m.focused == 12 { reset = focusStyle.Render(reset) }
+    if m.focused == 12 { reset = btnFocusStyle.Render("Reset All Volumes") }
     fmt.Fprintln(sb, "  "+reset)
+    // hit area for reset button (full line)
+    m.hits = append(m.hits, hitArea{ x1: baseX, y1: baseY + lineOfs, x2: baseX + w, y2: baseY + lineOfs, kind: hitBtnReset })
     fmt.Fprintln(b, panelStyle.Render(sb.String()))
+    volLines := lineOfs + 2 // + header and reset line
+    curY += volLines + 2 + 1 // borders + margin
 
     // Processing settings
     sb = &strings.Builder{}
     fmt.Fprintln(sb, sectionStyle.Render("Processing Settings"))
+    baseY = curY + 1; baseX = 2; lineOfs = 1
     line := m.chunk.Render(w); if m.focused==13 { line = focusStyle.Render(line) }; fmt.Fprintln(sb, " "+line)
+    // chunk hit
+    y := baseY + lineOfs; x1 := baseX + 1 + 15 + 1; x2 := x1 + barW - 1
+    m.hits = append(m.hits, hitArea{ x1: x1, y1: y, x2: x2, y2: y, kind: hitSliderChunk })
+    lineOfs++
     line = m.overlap.Render(w); if m.focused==14 { line = focusStyle.Render(line) }; fmt.Fprintln(sb, " "+line)
+    // overlap hit
+    y = baseY + lineOfs; x1 = baseX + 1 + 15 + 1; x2 = x1 + barW - 1
+    m.hits = append(m.hits, hitArea{ x1: x1, y1: y, x2: x2, y2: y, kind: hitSliderOverlap })
+    lineOfs++
     // Device
     cpu := renderRadio("CPU", m.cfg.Device=="cpu", m.focused==15)
     cuda := renderRadio("CUDA", m.cfg.Device=="cuda", m.focused==16)
     deviceBtns := lipgloss.JoinHorizontal(lipgloss.Top, cpu, "  ", cuda)
     fmt.Fprintln(sb, "  Device: "+deviceBtns)
+    // rough hit areas for CPU/CUDA radios
+    y = baseY + lineOfs; m.hits = append(m.hits, hitArea{ x1: baseX + 12, y1: y, x2: baseX + 20, y2: y, kind: hitRadioCPU })
+    m.hits = append(m.hits, hitArea{ x1: baseX + 24, y1: y, x2: baseX + 32, y2: y, kind: hitRadioCUDA })
+    lineOfs++
     // Normalize
     norm := renderToggle("Normalize", m.cfg.Normalize, m.focused==17, nord14, nord4)
     fmt.Fprintln(sb, "  "+norm)
+    y = baseY + lineOfs; m.hits = append(m.hits, hitArea{ x1: baseX + 2, y1: y, x2: baseX + 18, y2: y, kind: hitToggleNormalize })
+    lineOfs++
     // Empty queues
-    empty := btnStyle.Render("Empty Queues"); if m.focused==18 { empty = focusStyle.Render(empty) }
+    empty := btnStyle.Render("Empty Queues"); if m.focused==18 { empty = btnFocusStyle.Render("Empty Queues") }
     fmt.Fprintln(sb, "  "+empty)
+    y = baseY + lineOfs; m.hits = append(m.hits, hitArea{ x1: baseX, y1: y, x2: baseX + w, y2: y, kind: hitBtnEmpty })
     fmt.Fprintln(b, panelStyle.Render(sb.String()))
+    procLines := lineOfs + 1 // + header assumed already counted in lineOfs start
+    curY += procLines + 2 + 1
 
     // Checkpoint
     sb = &strings.Builder{}
     fmt.Fprintln(sb, sectionStyle.Render("Model Checkpoint"))
-    ti := m.chkpt.View(); if m.focused==19 { ti = focusStyle.Render(ti) }
+    ti := m.chkpt.View(); if m.focused==19 { ti = focusWrap.Render(ti) }
     fmt.Fprintln(sb, "  "+ti)
     fmt.Fprintln(b, panelStyle.Render(sb.String()))
+    // checkpoint hit (focus)
+    baseY = curY + 1; baseX = 2
+    m.hits = append(m.hits, hitArea{ x1: baseX, y1: baseY + 1, x2: baseX + w, y2: baseY + 1, kind: hitTextCheckpoint })
+    chkLines := strings.Count(sb.String(), "\n") + 1
+    curY += chkLines + 2 + 1
 
     // Help
     fmt.Fprintln(b, "")
-    fmt.Fprintln(b, lipgloss.NewStyle().Faint(true).Render("↑/↓ navigate  ←/→ adjust  Enter toggle  r reset  e empty  q quit"))
+    fmt.Fprintln(b, lipgloss.NewStyle().Faint(true).Render("↑/↓ navigate  ←/→ adjust  Enter toggle  d/b/v/o cycle stem  n normalize  r reset  e empty  q quit  (Click/drag sliders; click toggles/radios)"))
     return b.String()
 }
 
@@ -437,9 +699,9 @@ func renderToggle(label string, checked bool, focused bool, on lipgloss.Color, o
         box = "[x]"
         style = style.Copy().Foreground(on)
     }
-    out := fmt.Sprintf("%s %s", box, label)
-    if focused { out = focusStyle.Render(out) }
-    return style.Render(out)
+    out := style.Render(fmt.Sprintf("%s %s", box, label))
+    if focused { out = focusWrap.Render(out) }
+    return out
 }
 
 // Single-line radio ( ) Label or (•) Label
@@ -447,9 +709,9 @@ func renderRadio(label string, selected bool, focused bool) string {
     dot := "( )"
     style := lipgloss.NewStyle().Foreground(nord4)
     if selected { dot = "(•)"; style = style.Copy().Foreground(nord10) }
-    out := fmt.Sprintf("%s %s", dot, label)
-    if focused { out = focusStyle.Render(out) }
-    return style.Render(out)
+    out := style.Render(fmt.Sprintf("%s %s", dot, label))
+    if focused { out = focusWrap.Render(out) }
+    return out
 }
 
 // Stats loading/types
@@ -498,7 +760,8 @@ func renderBarWithMarker(ratio float64, width int, label string, color lipgloss.
         barRunes[mpos] = '│'
     }
     style := lipgloss.NewStyle().Foreground(color)
-    return style.Render(fmt.Sprintf("[%s] %s", string(barRunes), label))
+    // Put label on a separate line to avoid overflow in narrow terminals
+    return style.Render(fmt.Sprintf("[%s]\n     %s", string(barRunes), label))
 }
 
 func latencyLabel(s float64) string { return fmt.Sprintf("%.2f s", s) }
@@ -508,6 +771,8 @@ func latencyColor(s float64) lipgloss.Color {
     return nord14                 // green
 }
 func maxf(a, b float64) float64 { if a>b {return a}; return b }
+func clampf(v, lo, hi float64) float64 { if v<lo {return lo}; if v>hi {return hi}; return v }
+func minInt(a, b int) int { if a<b {return a}; return b }
 
 // Formatting helpers
 func formatBytes(b float64) string {
@@ -560,9 +825,86 @@ func formatInt(n float64) string {
 func main() {
     m := initialModel()
     // Kick off stats polling immediately and enable mouse tracking
-    p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+    p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
     if _, err := p.Run(); err != nil {
         fmt.Fprintf(os.Stderr, "error: %v\n", err)
         os.Exit(1)
     }
+}
+
+// Dynamic max focus index depending on whether Start is visible
+func (m model) maxFocus() int { return 20 }
+
+func isServiceRunning() bool {
+    // Prefer scanning /proc cmdline to match regex "pal-stem-separator$" in any argv segment
+    pids := findServicePIDs()
+    if len(pids) > 0 { return true }
+    // Fallback: simple pgrep
+    if _, err := exec.LookPath("pgrep"); err == nil {
+        if err := exec.Command("pgrep", "-f", "pal-stem-separator$").Run(); err == nil {
+            return true
+        }
+    }
+    return false
+}
+
+func matchServiceCmdline(cmdline []byte) bool {
+    parts := bytes.Split(cmdline, []byte{0})
+    for _, p := range parts {
+        if len(p) == 0 { continue }
+        s := string(p)
+        if filepath.Base(s) == "pal-stem-separator" || strings.HasSuffix(s, "pal-stem-separator") {
+            return true
+        }
+    }
+    return false
+}
+
+func findServicePIDs() []int {
+    var pids []int
+    d, err := os.ReadDir("/proc")
+    if err != nil { return nil }
+    for _, e := range d {
+        if !e.IsDir() { continue }
+        name := e.Name()
+        // only numeric PIDs
+        if len(name) == 0 || name[0] < '0' || name[0] > '9' { continue }
+        b, err := os.ReadFile(filepath.Join("/proc", name, "cmdline"))
+        if err == nil && matchServiceCmdline(b) {
+            pids = append(pids, toInt(name))
+        }
+    }
+    return pids
+}
+
+func startServiceAsync() {
+    // Launch: pulseaudio-lambda pal-stem-separator
+    cmd := exec.Command("pulseaudio-lambda", "pal-stem-separator")
+    // Detach from TUI session
+    cmd.Stdout = nil
+    cmd.Stderr = nil
+    cmd.Stdin = nil
+    cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+    _ = cmd.Start()
+}
+
+func stopServiceAsync() {
+    // Try pkill -f 'pal-stem-separator$'
+    if _, err := exec.LookPath("pkill"); err == nil {
+        _ = exec.Command("pkill", "-f", "pal-stem-separator$").Start()
+    }
+    // Also scan /proc and send SIGTERM to matching PIDs
+    for _, pid := range findServicePIDs() {
+        _ = syscall.Kill(pid, syscall.SIGTERM)
+    }
+}
+
+func toInt(s string) int {
+    n := 0
+    for i := 0; i < len(s); i++ {
+        c := s[i]
+        if c < '0' || c > '9' { break }
+        n = n*10 + int(c-'0')
+    }
+    return n
 }
