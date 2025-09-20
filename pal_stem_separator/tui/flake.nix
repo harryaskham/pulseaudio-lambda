@@ -20,7 +20,9 @@
       in rec {
         devShells = {
           default = pkgs.mkShell {
-            packages = [ self.packages.${system}.pal-stem-separator-tui ];
+            packages = [
+              pkgs.go
+            ];
           };
         };
 
@@ -30,7 +32,16 @@
             pname = "pal-stem-separator-tui";
             version = "0.1.0";
             src = ./.;
-            vendorHash = "sha256:${lib.fakeSha256}";
+            subPackages = [ "." ];
+            vendorHash = "sha256-krBCTnDw9cwKDXy097G7Zo6F7x/HJq4vjWDKh1E/P/I=";
+            postInstall = ''
+              # ensure consistent binary name
+              if [ -d "$out/bin" ]; then
+                for f in "$out/bin"/*; do
+                  mv "$f" "$out/bin/pal-stem-separator-tui"
+                done
+              fi
+            '';
           };
         };
       });
