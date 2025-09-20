@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-TUI (Terminal User Interface) for the stream separator config.
-Uses Textual for a modern TUI with mouse support.
-"""
-
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
 from textual.widgets import Header, Footer, Label, Input, Button, Static, RadioSet, RadioButton, Checkbox
@@ -466,8 +460,3 @@ class StreamSeparatorTUI(App):
         """Quit the application."""
         self.save_config()
         self.exit()
-
-
-if __name__ == "__main__":
-    app = StreamSeparatorTUI()
-    app.run()
