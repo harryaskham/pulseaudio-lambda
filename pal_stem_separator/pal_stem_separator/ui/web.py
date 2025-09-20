@@ -78,6 +78,16 @@ async def update_config(request: Request):
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
+async def get_stats(request: Request):
+    args = Args.read()
+    try:
+        with open(args.stats_path, "r") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        data = {}
+    return JSONResponse(data)
+
+
 HTML = """
 <!doctype html>
 <html>
@@ -106,6 +116,8 @@ HTML = """
   <script>
     let config = null;
     let saveTimer = null;
+    let prevStats = null;
+    let prevStatsAt = 0;
 
     async function loadConfig() {
       const r = await fetch('/api/config');
@@ -163,12 +175,76 @@ HTML = """
     }
 
     window.addEventListener('DOMContentLoaded', loadConfig);
+
+    // --- Stats ---
+    function fmtBytesPerSec(kbps) { return `${kbps.toFixed(1)} kB/s`; }
+    function fmtLatency(s) { return `${Math.round(s*1000)} ms`; }
+    function fmtRTF(v) { return `RTF ${v.toFixed(2)}`; }
+    function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+
+    async function loadStats() {
+      try {
+        const r = await fetch('/api/stats');
+        const stats = await r.json();
+        const now = Date.now() / 1000;
+        if (prevStats && prevStatsAt) {
+          const dt = Math.max(0.001, now - prevStatsAt);
+          const inKBps = Math.max(0, (stats.input_bytes - prevStats.input_bytes) / dt / 1024);
+          const outKBps = Math.max(0, (stats.output_bytes - prevStats.output_bytes) / dt / 1024);
+          const rtf = Math.max(0, (stats.processed_secs - prevStats.processed_secs) / dt);
+          // Update DOM
+          document.getElementById('in_kbps').textContent = fmtBytesPerSec(inKBps);
+          document.getElementById('out_kbps').textContent = fmtBytesPerSec(outKBps);
+          // Latency bar
+          const lat = stats.latency_secs || 0;
+          const latRatio = clamp(lat / 0.5, 0, 1);
+          const latEl = document.getElementById('latency_bar_fill');
+          latEl.style.width = `${Math.round(latRatio*100)}%`;
+          latEl.style.background = lat > 0.4 ? '#ef4444' : (lat > 0.2 ? '#f59e0b' : '#22c55e');
+          document.getElementById('latency_label').textContent = fmtLatency(lat);
+          // RTF bar
+          const rtfRatio = clamp(rtf / 1.0, 0, 1);
+          const rtfEl = document.getElementById('rtf_bar_fill');
+          rtfEl.style.width = `${Math.round(rtfRatio*100)}%`;
+          rtfEl.style.background = rtf < 0.9 ? '#ef4444' : (rtf < 1.0 ? '#f59e0b' : '#22c55e');
+          document.getElementById('rtf_label').textContent = fmtRTF(rtf);
+        }
+        prevStats = stats;
+        prevStatsAt = now;
+      } catch (_e) {
+        // ignore
+      }
+    }
+    setInterval(loadStats, 1000);
   </script>
   </head>
   <body>
     <div class="container">
       <h1>pa&lambda;-stem-separator</h1>
       <div id="status" class="status"></div>
+
+      <div class="section">
+        <h2>Live Stats</h2>
+        <div class="row"><label>Latency</label>
+          <div style="flex:1; display:flex; align-items:center; gap:8px;">
+            <div style="flex:1; height:10px; background:#eee; border-radius:6px; overflow:hidden;">
+              <div id="latency_bar_fill" style="height:100%; width:0%; background:#22c55e"></div>
+            </div>
+            <div id="latency_label" style="width:70px; text-align:right;">0 ms</div>
+          </div>
+        </div>
+        <div class="row"><label>Throughput</label>
+          <div>In <span id="in_kbps">0.0 kB/s</span> &nbsp; Out <span id="out_kbps">0.0 kB/s</span></div>
+        </div>
+        <div class="row"><label>Speed</label>
+          <div style="flex:1; display:flex; align-items:center; gap:8px;">
+            <div style="flex:1; height:10px; background:#eee; border-radius:6px; overflow:hidden;">
+              <div id="rtf_bar_fill" style="height:100%; width:0%; background:#22c55e"></div>
+            </div>
+            <div id="rtf_label" style="width:80px; text-align:right;">RTF 0.00</div>
+          </div>
+        </div>
+      </div>
 
       <div class="section">
         <h2>Volume Controls</h2>
@@ -228,6 +304,7 @@ def make_app() -> Starlette:
         Route("/", index),
         Route("/api/config", get_config),
         Route("/api/update", update_config, methods=["POST"]),
+        Route("/api/stats", get_stats),
     ])
 
 

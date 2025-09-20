@@ -73,6 +73,12 @@ func configPath() (string, error) {
     return filepath.Join(dir, "stream_separator_config.json"), nil
 }
 
+func statsPath() (string, error) {
+    dir, err := configDir()
+    if err != nil { return "", err }
+    return filepath.Join(dir, "stream_separator_stats.json"), nil
+}
+
 func loadConfig() (Config, string, error) {
     path, err := configPath()
     if err != nil { return Config{}, "", err }
@@ -160,6 +166,7 @@ func (s *slider) Render(width int) string {
 }
 
 type msgSave struct{}
+type msgStatsTick struct{}
 
 type model struct {
     cfg      Config
@@ -173,6 +180,14 @@ type model struct {
     chkpt    textinput.Model
     // debounce
     pendingSave bool
+
+    // live stats
+    stats       Stats
+    prevStats   Stats
+    lastStatsAt time.Time
+    inKBps      float64
+    outKBps     float64
+    rtf         float64 // processed seconds per wall second
 }
 
 func initialModel() model {
@@ -217,12 +232,18 @@ var (
     warnStyle    = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord11)
 )
 
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd {
+    return tea.Tick(1*time.Second, func(time.Time) tea.Msg { return msgStatsTick{} })
+}
 
 func (m *model) scheduleSave() tea.Cmd {
     if m.pendingSave { return nil }
     m.pendingSave = true
     return tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return msgSave{} })
+}
+
+func (m *model) scheduleStats() tea.Cmd {
+    return tea.Tick(1*time.Second, func(time.Time) tea.Msg { return msgStatsTick{} })
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -284,6 +305,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         m.pendingSave = false
         _ = saveConfig(m.cfg)
         return m, nil
+    case msgStatsTick:
+        // Load stats and compute simple rates
+        now := time.Now()
+        s := loadStats()
+        if !m.lastStatsAt.IsZero() {
+            dt := now.Sub(m.lastStatsAt).Seconds()
+            if dt > 0 {
+                m.inKBps = maxf((s.InputBytes-m.prevStats.InputBytes)/dt/1024.0, 0)
+                m.outKBps = maxf((s.OutputBytes-m.prevStats.OutputBytes)/dt/1024.0, 0)
+                m.rtf = maxf((s.ProcessedSecs-m.prevStats.ProcessedSecs)/dt, 0)
+            }
+        }
+        m.prevStats = m.stats
+        m.stats = s
+        m.lastStatsAt = now
+        return m, m.scheduleStats()
     }
 
     // textinput update when focused
@@ -305,6 +342,18 @@ func (m model) View() string {
     w := max(60, m.width-4)
     b := &strings.Builder{}
     fmt.Fprintln(b, titleStyle.Render("paλ-stem-separator"))
+
+    // Live Stats
+    fmt.Fprintln(b, sectionStyle.Render("Live Stats"))
+    // Latency bar (target 500ms scale)
+    latency := m.stats.LatencySecs
+    fmt.Fprintln(b, "  Latency:")
+    fmt.Fprintln(b, "   "+renderBar(latency/0.5, w-6, latencyLabel(latency), latencyColor(latency)))
+    // Throughput
+    fmt.Fprintf(b, "  In:  %6.1f kB/s    Out: %6.1f kB/s\n", m.inKBps, m.outKBps)
+    // Real-time factor
+    fmt.Fprintln(b, "  Processing Speed:")
+    fmt.Fprintln(b, "   "+renderBar(m.rtf/1.0, w-6, fmt.Sprintf("RTF %.2f", m.rtf), rtfColor(m.rtf)))
 
     // Volume Controls
     fmt.Fprintln(b, sectionStyle.Render("Stem Volumes"))
@@ -381,8 +430,58 @@ func renderRadio(label string, selected bool, focused bool) string {
     return style.Render(out)
 }
 
+// Stats loading/types
+type Stats struct {
+    InputBytes      float64 `json:"input_bytes"`
+    InputSamples    float64 `json:"input_samples"`
+    InputSecs       float64 `json:"input_secs"`
+    ProcessedBytes  float64 `json:"processed_bytes"`
+    ProcessedSamples float64 `json:"processed_samples"`
+    ProcessedSecs   float64 `json:"processed_secs"`
+    OutputBytes     float64 `json:"output_bytes"`
+    OutputSamples   float64 `json:"output_samples"`
+    OutputSecs      float64 `json:"output_secs"`
+    LatencySecs     float64 `json:"latency_secs"`
+}
+
+func loadStats() Stats {
+    p, err := statsPath()
+    if err != nil { return Stats{} }
+    b, err := os.ReadFile(p)
+    if err != nil { return Stats{} }
+    var s Stats
+    if err := json.Unmarshal(b, &s); err != nil { return Stats{} }
+    return s
+}
+
+// Rendering helpers
+func renderBar(ratio float64, width int, label string, color lipgloss.Color) string {
+    if width < 10 { width = 10 }
+    r := clamp(ratio, 0, 1)
+    filled := int(math.Round(r * float64(width)))
+    if filled > width { filled = width }
+    bar := strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+    style := lipgloss.NewStyle().Foreground(color)
+    return style.Render(fmt.Sprintf("[%s] %s", bar, label))
+}
+
+func latencyLabel(s float64) string { return fmt.Sprintf("%.0f ms", s*1000) }
+func latencyColor(s float64) lipgloss.Color {
+    if s > 0.4 { return nord11 } // red
+    if s > 0.2 { return nord13 } // amber
+    return nord14                 // green
+}
+func rtfColor(v float64) lipgloss.Color {
+    if v < 0.9 { return nord11 } // red if slower than real-time
+    if v < 1.0 { return nord13 } // amber nearing
+    return nord14
+}
+func maxf(a, b float64) float64 { if a>b {return a}; return b }
+
 func main() {
-    p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+    m := initialModel()
+    // Kick off stats polling immediately
+    p := tea.NewProgram(m, tea.WithAltScreen())
     if _, err := p.Run(); err != nil {
         fmt.Fprintf(os.Stderr, "error: %v\n", err)
         os.Exit(1)
