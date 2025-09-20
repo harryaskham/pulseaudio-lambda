@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import copy
 import datetime
 import sys
 import os
@@ -9,6 +10,9 @@ import logging
 import threading
 import queue
 import libtmux
+from typing import Protocol, Self, Callable, Dict
+import dataclasses
+import json
 
 from pal_stem_separator.stream_separator_args import Args
 from pal_stem_separator.stream_separator_utils import expand_path
@@ -42,14 +46,16 @@ def check_and_empty_queues(args, input_queue, output_queue):
         return True
     return False
 
-def audio_input_thread(input_queue, sample_spec):
+def audio_input_thread(input_queue, stats_queue, sample_spec):
     try:
         last_input_audio_tensor = None
         while True:
             args = Args.get_live()
 
             # Read chunk from stdin
-            num_bytes = sample_spec.secs_to_bytes(args.chunk_secs + args.overlap_secs)
+            secs = args.chunk_secs + args.overlap_secs
+            num_samples = sample_spec.secs_to_samples(secs)
+            num_bytes = sample_spec.secs_to_bytes(secs)
             input_audio_tensor = sample_spec.read_chunk(sys.stdin.buffer, num_bytes)
             if input_audio_tensor is None:
                 break
@@ -74,11 +80,16 @@ def audio_input_thread(input_queue, sample_spec):
                       remove_overlap_start=remove_overlap_start,
                       remove_overlap_end=remove_overlap_end))
 
+            stats_queue.put(StatsData(
+                input_secs=IntSum(secs),
+                input_bytes=IntSum(num_bytes),
+                input_samples=IntSum(num_samples)))
+
     except Exception as e:
         logging.error(f"Processing error: {e}")
         sys.exit(1)
 
-def audio_inference_thread(input_queue, output_queue, sample_spec):
+def audio_inference_thread(input_queue, output_queue, stats_queue, sample_spec):
     loaded_checkpoint = None
     loaded_device = None
 
@@ -133,7 +144,7 @@ def audio_inference_thread(input_queue, output_queue, sample_spec):
         queue_output_chunk(chunk, sample_spec.channels, sample_spec.bits, output_queue)
         logging.debug("Output queued, continuing loop...")
 
-def audio_output_thread(output_queue, sample_spec):
+def audio_output_thread(output_queue, stats_queue, sample_spec):
     """Output thread that writes queued audio at regular intervals."""
     buffer_size = int(os.environ.get('PA_LAMBDA_BUFFER_SIZE', '1024'))
     buffer_duration = buffer_size / sample_spec.sample_rate  # 23.2ms for 1024 samples at 44.1kHz
@@ -165,6 +176,102 @@ def audio_output_thread(output_queue, sample_spec):
         logging.error(f"Output thread error: {e}")
     
     logging.info("Output thread stopping")
+
+class Semigroup[T](Protocol[T]):
+    def mappend(self, other: T) -> T: ...
+
+class Empty[T](Protocol[T]):
+    @classmethod
+    def mempty(cls) -> T: ...
+
+class Monoid[T](Empty[T], Semigroup[T], Protocol[T]): ...
+
+@dataclasses.dataclass
+class Value[T]:
+    value: T
+
+    def get(self) -> T:
+        return self.value
+
+    def set(self, value: T) -> Self:
+        x = copy.deepcopy(self)
+        x.value = value
+        return x
+
+    def modify(self, f: Callable[[T], T]) -> Self:
+        return self.set(f(self.value))
+
+class Int(Value[int], Empty[int]):
+    @classmethod
+    def mempty(cls) -> Self:
+        return cls(0)
+
+class Float(Value[float], Empty[float]):
+    @classmethod
+    def mempty(cls) -> Self:
+        return cls(0.0)
+
+class Num[T: Int | Float](Value[T]):
+    def __add__(self, other: Self) -> Self:
+        return self.modify(lambda x: x.modify(lambda n: n + other.get().get()))
+
+class IntSum(Value[int], Monoid[int]):
+    @classmethod
+    def mempty(cls) -> Self:
+        return cls(0)
+    def mappend(self, other: Self) -> Self:
+        return self.modify(lambda n: n + other.get())
+
+class FloatLast(Value[float], Monoid[float]):
+    @classmethod
+    def mempty(cls) -> Self:
+        return cls(0.0)
+    def mappend(self, other: Self) -> Self:
+        return other
+
+@dataclasses.dataclass
+class StatsData:
+    input_bytes: IntSum = dataclasses.field(default_factory=IntSum)
+    output_bytes: IntSum = dataclasses.field(default_factory=IntSum)
+    input_samples: IntSum = dataclasses.field(default_factory=IntSum)
+    output_samples: IntSum = dataclasses.field(default_factory=IntSum)
+    latency_secs: FloatLast = dataclasses.field(default_factory=FloatLast)
+
+class Stats(Value[StatsData], Monoid[StatsData]):
+    @classmethod
+    def mempty(cls) -> Self:
+        return cls(value=StatsData())
+
+    def mappend(self, other: Self) -> Self:
+        self_dict = dataclasses.asdict(self.get())
+        other_dict = dataclasses.asdict(other.get())
+        for k, self_value in self_dict.items():
+            other_value = other_dict.get(k, T.mempty())
+            self_dict[k] = self_value.mappend(other_value)
+        return self.set(StatsData(**self_dict))
+
+    def save(self, args):
+        with open(args.stats_path, 'w') as f:
+            json.dump({
+                k: v.get()
+                for k, v in dataclasses.asdict(self.get())
+            }, f)
+
+def stats_output_thread(stats_queue):
+    """Output thread that writes queued stats at regular intervals."""
+    stats = Stats.mempty()
+    while True:
+        args = Args.get_live()
+        try:
+            logging.debug(f"stats: {new_stats}")
+            new_stats = stats_queue.get()
+            logging.debug(f"mappending stats: {new_stats}")
+            stats = stats.mappend(stats, new_stats)
+            logging.debug(f"stats: {new_stats}")
+        except queue.Empty:
+            continue
+
+    logging.info("Stats thread stopping")
 
 def queue_output_chunk(chunk, channels, bits, output_queue):
     """Convert processed audio tensor to bytes and queue for output."""
@@ -342,30 +449,37 @@ def main():
     # Set up audio output queue and thread
     input_queue = queue.Queue()
     output_queue = queue.Queue()
+    stats_queue = queue.Queue()
 
     input_thread = threading.Thread(
         target=audio_input_thread,
-        args=(input_queue, sample_spec),
+        args=(input_queue, stats_queue, sample_spec),
         daemon=True)
     inference_thread = threading.Thread(
         target=audio_inference_thread,
-        args=(input_queue, output_queue, sample_spec),
+        args=(input_queue, output_queue, stats_queue, sample_spec),
         daemon=True)
     output_thread = threading.Thread(
         target=audio_output_thread,
-        args=(output_queue, sample_spec),
+        args=(output_queue, stats_queue, sample_spec),
+        daemon=True)
+    stats_thread = threading.Thread(
+        target=stats_output_thread,
+        args=(stats_queue,),
         daemon=True)
 
     logging.info("Starting I/O threads...")
     input_thread.start()
     inference_thread.start()
     output_thread.start()
+    stats_thread.start()
 
     try:
         logging.info("Awaiting stream completion...")
         input_thread.join()
         inference_thread.join()
         output_thread.join()
+        stats_thread.join()
         args.join()
         if ui_thread is not None:
             ui_thread.join()

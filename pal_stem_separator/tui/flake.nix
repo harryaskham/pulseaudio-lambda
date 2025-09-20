@@ -33,7 +33,10 @@
             version = "0.1.0";
             src = ./.;
             subPackages = [ "." ];
-            vendorHash = "sha256-krBCTnDw9cwKDXy097G7Zo6F7x/HJq4vjWDKh1E/P/I=";
+            postPatch = ''
+              rm -rf vendor || true
+            '';
+            vendorHash = "sha256-JGQ/UHaGj8t8G/stfcTTnGtifw8ZfbxCzByzH5METyo=";
             postInstall = ''
               # ensure consistent binary name
               if [ -d "$out/bin" ]; then

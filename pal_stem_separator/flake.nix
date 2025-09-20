@@ -171,6 +171,9 @@
           portaudio
           ffmpeg
           ffmpeg.lib
+          # Py
+          mypy
+          ruff
           # Web GUI runtime deps for pywebview (GTK backend)
           qt5.qtbase
           qtcreator

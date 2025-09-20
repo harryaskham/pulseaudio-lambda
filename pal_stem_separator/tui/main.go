@@ -190,16 +190,31 @@ func initialModel() model {
     ti.CharLimit = 4096
     ti.Width = 60
     m.chkpt = ti
+
     return m
 }
 
 var (
-    titleStyle   = lipgloss.NewStyle().Bold(true)
-    sectionStyle = lipgloss.NewStyle().MarginTop(1)
-    focusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-    btnStyle     = lipgloss.NewStyle().Padding(0,1).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("245"))
-    btnOnStyle   = btnStyle.Copy().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("204")).BorderForeground(lipgloss.Color("204"))
-    warnStyle    = btnStyle.Copy().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("220")).BorderForeground(lipgloss.Color("220"))
+    // Nord palette
+    nord0 = lipgloss.Color("#2E3440")
+    nord1 = lipgloss.Color("#3B4252")
+    nord2 = lipgloss.Color("#434C5E")
+    nord3 = lipgloss.Color("#4C566A")
+    nord4 = lipgloss.Color("#D8DEE9")
+    nord7 = lipgloss.Color("#8FBCBB")
+    nord8 = lipgloss.Color("#88C0D0")
+    nord9 = lipgloss.Color("#81A1C1")
+    nord10 = lipgloss.Color("#5E81AC")
+    nord11 = lipgloss.Color("#BF616A")
+    nord13 = lipgloss.Color("#EBCB8B")
+    nord14 = lipgloss.Color("#A3BE8C")
+
+    titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(nord8)
+    sectionStyle = lipgloss.NewStyle().MarginTop(1).Foreground(nord9)
+    focusStyle   = lipgloss.NewStyle().Foreground(nord13)
+    btnStyle     = lipgloss.NewStyle().Padding(0,1).Foreground(nord4).Background(nord2)
+    btnOnStyle   = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord10)
+    warnStyle    = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord11)
 )
 
 func (m model) Init() tea.Cmd { return nil }
@@ -242,12 +257,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         case "enter", " ":
             switch m.focused {
             case 4,5,6,7: // mute
-                i := m.focused-4; m.cfg.ToggleMute(i); return m, m.scheduleSave()
+                i := m.focused-4
+                m.cfg.ToggleMute(i)
+                return m, m.scheduleSave()
             case 8,9,10,11: // solo
-                i := m.focused-8; m.cfg.ToggleSolo(i); return m, m.scheduleSave()
-            case 14: m.cfg.Device = "cpu"; return m, m.scheduleSave()
-            case 15: m.cfg.Device = "cuda"; return m, m.scheduleSave()
-            case 16: m.cfg.Normalize = !m.cfg.Normalize; return m, m.scheduleSave()
+                i := m.focused-8
+                m.cfg.ToggleSolo(i)
+                return m, m.scheduleSave()
+            case 14:
+                m.cfg.Device = "cpu"; return m, m.scheduleSave()
+            case 15:
+                m.cfg.Device = "cuda"; return m, m.scheduleSave()
+            case 16:
+                m.cfg.Normalize = !m.cfg.Normalize; return m, m.scheduleSave()
             case 18: m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
             case 19: m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
             case 20: _ = saveConfig(m.cfg); return m, nil
@@ -282,25 +304,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
     w := max(60, m.width-4)
     b := &strings.Builder{}
-    fmt.Fprintln(b, titleStyle.Render("Stream Separator Configuration (Go TUI)"))
+    fmt.Fprintln(b, titleStyle.Render("paλ-stem-separator"))
 
     // Volume Controls
-    fmt.Fprintln(b, sectionStyle.Render("Volume Controls"))
+    fmt.Fprintln(b, sectionStyle.Render("Stem Volumes"))
     for i := 0; i < 4; i++ {
         line := m.gain[i].Render(w)
         if m.focused == i { line = focusStyle.Render(line) }
         fmt.Fprintln(b, " "+line)
-        // buttons
-        mute := btnStyle.Render(" M ")
-        if m.cfg.Muted[i] { mute = btnOnStyle.Render(" M ") }
-        solo := btnStyle.Render(" S ")
-        if m.cfg.Soloed[i] { solo = warnStyle.Render(" S ") }
-        if m.focused == 4+i { mute = focusStyle.Render(mute) }
-        if m.focused == 8+i { solo = focusStyle.Render(solo) }
-        fmt.Fprintln(b, "   "+mute+" "+solo)
+        // mute / solo as single-line toggles
+        mute := renderToggle("Mute", m.cfg.Muted[i], m.focused == 4+i, nord11, nord4)
+        solo := renderToggle("Solo", m.cfg.Soloed[i], m.focused == 8+i, nord13, nord4)
+        btns := lipgloss.JoinHorizontal(lipgloss.Top, mute, "  ", solo)
+        fmt.Fprintln(b, "   "+btns)
     }
     // Reset
-    reset := btnStyle.Render(" Reset All Volumes ")
+    reset := btnStyle.Render("Reset All Volumes")
     if m.focused == 18 { reset = focusStyle.Render(reset) }
     fmt.Fprintln(b, "  "+reset)
 
@@ -309,15 +328,15 @@ func (m model) View() string {
     line := m.chunk.Render(w); if m.focused==12 { line = focusStyle.Render(line) }; fmt.Fprintln(b, " "+line)
     line = m.overlap.Render(w); if m.focused==13 { line = focusStyle.Render(line) }; fmt.Fprintln(b, " "+line)
     // Device
-    cpu := btnStyle.Render(" CPU "); if m.cfg.Device=="cpu" { cpu = btnOnStyle.Render(" CPU ") }; if m.focused==14 { cpu = focusStyle.Render(cpu) }
-    cuda := btnStyle.Render(" CUDA "); if m.cfg.Device=="cuda" { cuda = btnOnStyle.Render(" CUDA ") }; if m.focused==15 { cuda = focusStyle.Render(cuda) }
-    fmt.Fprintln(b, "  Device: "+cpu+" "+cuda)
+    cpu := renderRadio("CPU", m.cfg.Device=="cpu", m.focused==14)
+    cuda := renderRadio("CUDA", m.cfg.Device=="cuda", m.focused==15)
+    deviceBtns := lipgloss.JoinHorizontal(lipgloss.Top, cpu, "  ", cuda)
+    fmt.Fprintln(b, "  Device: "+deviceBtns)
     // Normalize
-    norm := "[ ]"; if m.cfg.Normalize { norm = "[x]" }
-    if m.focused==16 { norm = focusStyle.Render(norm) }
-    fmt.Fprintln(b, "  Normalize: "+norm)
+    norm := renderToggle("Normalize", m.cfg.Normalize, m.focused==16, nord14, nord4)
+    fmt.Fprintln(b, "  "+norm)
     // Empty queues
-    empty := btnStyle.Render(" Empty Queues "); if m.focused==19 { empty = focusStyle.Render(empty) }
+    empty := btnStyle.Render("Empty Queues"); if m.focused==19 { empty = focusStyle.Render(empty) }
     fmt.Fprintln(b, "  "+empty)
 
     // Checkpoint
@@ -326,7 +345,7 @@ func (m model) View() string {
     fmt.Fprintln(b, "  "+ti)
 
     // Save
-    saveBtn := btnStyle.Render(" Save Configuration "); if m.focused==20 { saveBtn = focusStyle.Render(saveBtn) }
+    saveBtn := btnStyle.Render("Save Configuration"); if m.focused==20 { saveBtn = focusStyle.Render(saveBtn) }
     fmt.Fprintln(b, "  "+saveBtn)
 
     // Help
@@ -339,6 +358,29 @@ func clamp(v, lo, hi float64) float64 { if v<lo {return lo}; if v>hi {return hi}
 func max(a,b int) int { if a>b {return a}; return b }
 func round1(v float64) float64 { return math.Round(v*10)/10 }
 
+// Single-line toggle [ ] Label or [x] Label with color accents
+func renderToggle(label string, checked bool, focused bool, on lipgloss.Color, off lipgloss.Color) string {
+    box := "[ ]"
+    style := lipgloss.NewStyle().Foreground(off)
+    if checked {
+        box = "[x]"
+        style = style.Copy().Foreground(on)
+    }
+    out := fmt.Sprintf("%s %s", box, label)
+    if focused { out = focusStyle.Render(out) }
+    return style.Render(out)
+}
+
+// Single-line radio ( ) Label or (•) Label
+func renderRadio(label string, selected bool, focused bool) string {
+    dot := "( )"
+    style := lipgloss.NewStyle().Foreground(nord4)
+    if selected { dot = "(•)"; style = style.Copy().Foreground(nord10) }
+    out := fmt.Sprintf("%s %s", dot, label)
+    if focused { out = focusStyle.Render(out) }
+    return style.Render(out)
+}
+
 func main() {
     p := tea.NewProgram(initialModel(), tea.WithAltScreen())
     if _, err := p.Run(); err != nil {
@@ -346,4 +388,3 @@ func main() {
         os.Exit(1)
     }
 }
-

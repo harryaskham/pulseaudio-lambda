@@ -51,6 +51,7 @@ class Args:
     ui_only: bool | None = dataclasses.field(default=False, repr=False, compare=False)
     config_dir: str | None = dataclasses.field(default=None, repr=False, compare=False)
     config_path: str | None = dataclasses.field(default=None, repr=False, compare=False)
+    stats_path: str | None = dataclasses.field(default=None, repr=False, compare=False)
     observer: Observer | None = dataclasses.field(default=None, repr=False, compare=False)
 
     # Export args
@@ -73,6 +74,12 @@ class Args:
         if config_dir is None:
             config_dir = cls.get_config_dir(args)
         return os.path.join(config_dir, "stream_separator_config.json")
+
+    @classmethod
+    def get_stats_json_path(cls, config_dir=None, args=None):
+        if config_dir is None:
+            config_dir = cls.get_config_dir(args)
+        return os.path.join(config_dir, "stream_separator_stats.json")
 
     @classmethod
     def refresh(cls):
@@ -163,6 +170,7 @@ class Args:
 
         config_dir = Args.get_config_dir(args)
         config_json_path = Args.get_config_json_path(config_dir=config_dir, args=args)
+        stats_json_path = Args.get_stats_json_path(config_dir=config_dir, args=args)
         config_args = Args.read(config_dir=config_dir)
 
         observer = prev_args.observer if prev_args is not None else None
@@ -203,6 +211,7 @@ class Args:
             debug=debug,
             config_dir=config_dir,
             config_path=config_json_path,
+            stats_path=stats_json_path,
             watch=watch,
             observer=observer,
             empty_queues_requested=config_args.empty_queues_requested,
@@ -229,10 +238,12 @@ class Args:
         config_json_path = cls.get_config_json_path(config_dir=config_dir)
         if not os.path.exists(config_json_path):
             raise FileNotFoundError(f"Config file not found: {config_json_path}")
+        stats_json_path = cls.get_stats_json_path(config_dir=config_dir)
         with open(config_json_path, 'r') as f:
             args = cls(
                 config_dir=config_dir,
                 config_path=config_json_path,
+                stats_path=stats_json_path,
                 **(json.load(f)))
             logging.info(f"Loaded config args: {args}")
             return args
