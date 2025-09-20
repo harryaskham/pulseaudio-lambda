@@ -4,6 +4,7 @@ import (
     "bufio"
     "encoding/json"
     "errors"
+    "flag"
     "fmt"
     tea "github.com/charmbracelet/bubbletea"
     "github.com/charmbracelet/bubbles/textinput"
@@ -191,9 +192,10 @@ type model struct {
     stats       Stats
     prevStats   Stats
     lastStatsAt time.Time
-    inKBps      float64
-    outKBps     float64
+    inBps       float64
+    outBps      float64
     rtf         float64 // processed seconds per wall second
+    hist        []rateSample
 
     // mouse/hit testing
     hits []hitArea
@@ -207,6 +209,19 @@ type model struct {
     logs     []string
     logCh    chan string
     childCmd *exec.Cmd
+    followTail bool
+    childPGID int
+
+    // startup
+    autoStart bool
+    serviceDebug bool
+}
+
+type rateSample struct {
+    t    time.Time
+    in   float64
+    out  float64
+    proc float64
 }
 
 func initialModel() model {
@@ -226,6 +241,7 @@ func initialModel() model {
     m.chkpt = ti
     m.vp = viewport.Model{Width: 80, Height: 10}
     m.logCh = make(chan string, 1024)
+    m.followTail = true
 
     return m
 }
@@ -256,10 +272,11 @@ var (
     focusWrap    = lipgloss.NewStyle().Background(nord1)
 )
 
-func (m model) Init() tea.Cmd {
-    return tea.Batch(
-        tea.Tick(1*time.Second, func(time.Time) tea.Msg { return msgStatsTick{} }),
-    )
+func (m *model) Init() tea.Cmd {
+    if m.autoStart {
+        return tea.Batch(m.startChild(), m.scheduleStats())
+    }
+    return m.scheduleStats()
 }
 
 func (m *model) scheduleSave() tea.Cmd {
@@ -276,7 +293,7 @@ func (m *model) scheduleLogPoll() tea.Cmd {
     return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg { return msgLogPoll{} })
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     switch msg := msg.(type) {
     case tea.MouseMsg:
         // Prefer new MouseAction/MouseButton if available; fallback to Type for compat
@@ -300,6 +317,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             return m, nil
         }
         if msg.Button == tea.MouseButtonWheelUp || msg.Type == tea.MouseWheelUp {
+            if m.showLogs { m.followTail = false }
             // If over a slider, adjust it; else move focus
             for _, h := range m.hits {
                 if msg.X >= h.x1 && msg.X <= h.x2 && msg.Y >= h.y1 && msg.Y <= h.y2 {
@@ -314,6 +332,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 }
             }
             if m.focused > 0 { m.focused-- }
+            if m.showLogs {
+                var cmd tea.Cmd
+                m.vp, cmd = m.vp.Update(msg)
+                return m, cmd
+            }
             return m, nil
         }
         if msg.Button == tea.MouseButtonWheelDown || msg.Type == tea.MouseWheelDown {
@@ -330,7 +353,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 }
             }
             m.focused++
-            if m.focused > 19 { m.focused = 19 }
+            if m.focused > m.maxFocus() { m.focused = m.maxFocus() }
             // also forward to viewport for scroll-on-hover if logs visible
             if m.showLogs {
                 var cmd tea.Cmd
@@ -404,14 +427,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                 }
                 return m, m.startChild()
             case 21:
-                m.showLogs = !m.showLogs
+                if m.childCmd != nil {
+                    m.showLogs = !m.showLogs
+                    if m.showLogs { m.followTail = true }
+                }
                 return m, nil
             }
         // no explicit save button/hotkey; autosave is default
         case "r": m.cfg.ResetVolumes(); for i:=0;i<4;i++{ m.gain[i].Value = 100 }; return m, m.scheduleSave()
         case "e": m.cfg.RequestEmptyQueues(); return m, m.scheduleSave()
         case "n": m.cfg.Normalize = !m.cfg.Normalize; return m, m.scheduleSave()
-        case "l": m.showLogs = !m.showLogs; return m, nil
+        case "l":
+            if m.childCmd != nil {
+                m.showLogs = !m.showLogs
+                if m.showLogs { m.followTail = true }
+            }
+            return m, nil
         case "d":
             i := 0; m.cycleStemState(i); return m, m.scheduleSave()
         case "b":
@@ -423,6 +454,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         }
         // Forward other keys to logs viewport when visible
         if m.showLogs {
+            switch msg.String() {
+            case "pgup", "home", "up", "k":
+                m.followTail = false
+            case "end":
+                m.followTail = true
+            }
             var cmd tea.Cmd
             m.vp, cmd = m.vp.Update(msg)
             return m, cmd
@@ -437,12 +474,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         // Load stats and compute simple rates
         now := time.Now()
         s := loadStats()
-        if !m.lastStatsAt.IsZero() {
-            dt := now.Sub(m.lastStatsAt).Seconds()
-            if dt > 0 {
-                m.inKBps = maxf((s.InputBytes-m.prevStats.InputBytes)/dt/1024.0, 0)
-                m.outKBps = maxf((s.OutputBytes-m.prevStats.OutputBytes)/dt/1024.0, 0)
-                m.rtf = maxf((s.ProcessedSecs-m.prevStats.ProcessedSecs)/dt, 0)
+        // Update moving window history (30s) and compute moving-average rates
+        m.hist = append(m.hist, rateSample{t: now, in: s.InputBytes, out: s.OutputBytes, proc: s.ProcessedSecs})
+        // prune
+        cutoff := now.Add(-30 * time.Second)
+        i := 0
+        for i < len(m.hist) && m.hist[i].t.Before(cutoff) { i++ }
+        if i > 0 && i < len(m.hist) { m.hist = append([]rateSample{}, m.hist[i:]...) } else if i >= len(m.hist) { m.hist = nil }
+        if len(m.hist) >= 2 {
+            first := m.hist[0]
+            last := m.hist[len(m.hist)-1]
+            dt := last.t.Sub(first.t).Seconds()
+            if dt > 0.001 {
+                m.inBps = maxf((last.in-first.in)/dt, 0)
+                m.outBps = maxf((last.out-first.out)/dt, 0)
+                m.rtf = maxf((last.proc-first.proc)/dt, 0)
             }
         }
         m.prevStats = m.stats
@@ -465,7 +511,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             if drained {
                 if len(m.logs) > 2000 { m.logs = m.logs[len(m.logs)-2000:] }
                 m.vp.SetContent(strings.Join(m.logs, "\n"))
-                m.vp.GotoBottom()
+                if m.followTail { m.vp.GotoBottom() }
             }
             return m, m.scheduleLogPoll()
         }
@@ -524,7 +570,7 @@ const (
 
 type hitArea struct { x1, y1, x2, y2 int; kind hitKind; index int; }
 
-func (m model) handleHit(h hitArea, clickX int) (tea.Model, tea.Cmd) {
+func (m *model) handleHit(h hitArea, clickX int) (tea.Model, tea.Cmd) {
     switch h.kind {
     case hitSliderVolume:
         m.focused = 3*h.index + 0
@@ -619,7 +665,7 @@ func (m model) View() string {
     barW := max(10, w-10)
     fmt.Fprintln(sb, "   "+renderBarWithMarker(latency/45.0, barW, latencyLabel(latency), latencyColor(latency), m.cfg.ChunkSecs/45.0))
     // Throughput and speed
-    fmt.Fprintf(sb, "  %s    %s    RTF: %.2fx\n", formatRate("In", m.inKBps*1024), formatRate("Out", m.outKBps*1024), m.rtf)
+    fmt.Fprintf(sb, "  %s    %s    RTF: %.2fx\n", formatRate("In", m.inBps), formatRate("Out", m.outBps), m.rtf)
     // Raw totals
     fmt.Fprintf(sb, "  Input:     %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.InputBytes), formatInt(m.stats.InputSamples), m.stats.InputSecs)
     fmt.Fprintf(sb, "  Processed: %8s  %12s samples  %6.2f s\n", formatBytes(m.stats.ProcessedBytes), formatInt(m.stats.ProcessedSamples), m.stats.ProcessedSecs)
@@ -630,10 +676,15 @@ func (m model) View() string {
     svcLabel := "Start"; if m.serviceRunning { svcLabel = "Stop" }
     svcStyle := btnStyle; if m.focused == 20 { svcStyle = btnFocusStyle }
     svcBtn := svcStyle.Render(svcLabel)
-    logsLabel := "Show Logs"; if m.showLogs { logsLabel = "Hide Logs" }
-    logsStyle := btnStyle; if m.focused == 21 { logsStyle = btnFocusStyle }
-    logsBtn := logsStyle.Render(logsLabel)
-    fmt.Fprintln(sb, "  Service: "+svc+"  "+svcBtn+"  "+logsBtn)
+    var logsUI string
+    if m.childCmd != nil {
+        logsLabel := "Show Logs"; if m.showLogs { logsLabel = "Hide Logs" }
+        logsStyle := btnStyle; if m.focused == 21 { logsStyle = btnFocusStyle }
+        logsUI = logsStyle.Render(logsLabel)
+    } else {
+        logsUI = lipgloss.NewStyle().Faint(true).Render("<logs unavailable>")
+    }
+    fmt.Fprintln(sb, "  Service: "+svc+"  "+svcBtn+"  "+logsUI)
     // Service Start button hit area if stopped
     if !m.serviceRunning {
         // Approximate start button position: last line of sb
@@ -649,12 +700,14 @@ func (m model) View() string {
     btnY := curY - 3
     if m.serviceRunning { m.hits = append(m.hits, hitArea{ x1: 2, y1: btnY, x2: 2 + w/3, y2: btnY, kind: hitBtnStop }) }
     if !m.serviceRunning { m.hits = append(m.hits, hitArea{ x1: 2, y1: btnY, x2: 2 + w/3, y2: btnY, kind: hitBtnStart }) }
-    m.hits = append(m.hits, hitArea{ x1: 2 + w/3 + 2, y1: btnY, x2: 2 + w, y2: btnY, kind: hitBtnLogs })
+    if m.childCmd != nil {
+        m.hits = append(m.hits, hitArea{ x1: 2 + w/3 + 2, y1: btnY, x2: 2 + w, y2: btnY, kind: hitBtnLogs })
+    }
 
     // Logs viewport (optional)
     if m.showLogs {
         m.vp.Width = w
-        m.vp.Height = max(6, m.height/3)
+        m.vp.Height = 10
         fmt.Fprintln(b, panelStyle.Render("Logs\n"+m.vp.View()))
         curY += m.vp.Height + 3
     }
@@ -747,9 +800,6 @@ func (m model) View() string {
     chkLines := strings.Count(sb.String(), "\n") + 1
     curY += chkLines + 2 + 1
 
-    // Help
-    fmt.Fprintln(b, "")
-    fmt.Fprintln(b, lipgloss.NewStyle().Faint(true).Render("↑/↓ navigate  ←/→ adjust  Enter toggle  d/b/v/o cycle stem  n normalize  r reset  e empty  q quit  (Click/drag sliders; click toggles/radios)"))
     return b.String()
 }
 
@@ -889,9 +939,18 @@ func formatInt(n float64) string {
 }
 
 func main() {
+    autoService := false
+    fs := flag.NewFlagSet("pal-stem-separator-tui", flag.ContinueOnError)
+    serviceDebug := false
+    fs.BoolVar(&autoService, "service", false, "Start service on launch (show logs)")
+    fs.BoolVar(&serviceDebug, "debug", false, "Run service with --debug")
+    _ = fs.Parse(os.Args[1:])
+
     m := initialModel()
+    m.autoStart = autoService
+    m.serviceDebug = serviceDebug
     // Kick off stats polling immediately and enable mouse tracking
-    p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion())
+    p := tea.NewProgram(&m, tea.WithAltScreen(), tea.WithMouseAllMotion())
     if _, err := p.Run(); err != nil {
         fmt.Fprintf(os.Stderr, "error: %v\n", err)
         os.Exit(1)
@@ -902,7 +961,8 @@ func main() {
 func (m model) maxFocus() int { return 21 }
 
 func (m model) focusOrder() []int {
-    order := []int{20, 21}
+    order := []int{20}
+    if m.childCmd != nil { order = append(order, 21) }
     // stems vol/mute/solo
     for i:=0; i<12; i++ { order = append(order, i) }
     order = append(order, 12,13,14,15,16,17,18,19)
@@ -945,7 +1005,13 @@ func matchServiceCmdline(cmdline []byte) bool {
     for _, p := range parts {
         if len(p) == 0 { continue }
         s := string(p)
-        if filepath.Base(s) == "pal-stem-separator" || strings.HasSuffix(s, "pal-stem-separator") {
+        base := filepath.Base(s)
+        // Match python-wrapped pal-stem-separator in argv
+        if base == "pal-stem-separator" || strings.HasSuffix(s, "/pal-stem-separator") {
+            return true
+        }
+        // Match explicit subcommand invocations we spawn when --debug is set
+        if s == "stem-separator" || s == "stem-separator --debug" {
             return true
         }
     }
@@ -1004,13 +1070,28 @@ func toInt(s string) int {
 // Start child process with captured logs
 func (m *model) startChild() tea.Cmd {
     if m.childCmd != nil { return nil }
-    cmd := exec.Command("pulseaudio-lambda", "pal-stem-separator")
+    var cmd *exec.Cmd
+    if m.serviceDebug {
+        // Pass debug to service as a single quoted arg
+        cmd = exec.Command("pulseaudio-lambda", "stem-separator --debug")
+    } else {
+        cmd = exec.Command("pulseaudio-lambda", "pal-stem-separator")
+    }
+    // Start in a new process group so we can signal the group and kill descendants
+    cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
     stdout, _ := cmd.StdoutPipe()
     stderr, _ := cmd.StderrPipe()
     if err := cmd.Start(); err != nil {
         return nil
     }
     m.childCmd = cmd
+    // Record process group id
+    if pgid, err := syscall.Getpgid(cmd.Process.Pid); err == nil { m.childPGID = pgid }
+    // Enable logs by default when we manage the process
+    m.logs = nil
+    m.vp.SetContent("")
+    m.showLogs = true
+    m.followTail = true
 
     go func() {
         sc := bufio.NewScanner(stdout)
@@ -1026,6 +1107,17 @@ func (m *model) startChild() tea.Cmd {
 
 func (m *model) stopChild() {
     if m.childCmd == nil { return }
-    _ = m.childCmd.Process.Signal(syscall.SIGTERM)
+    // Send SIGTERM to the whole process group to ensure child and its descendants exit
+    if m.childPGID != 0 {
+        _ = syscall.Kill(-m.childPGID, syscall.SIGTERM)
+    } else {
+        _ = m.childCmd.Process.Signal(syscall.SIGTERM)
+    }
+    // Also proactively signal any matching service PIDs we find (belt and suspenders)
+    for _, pid := range findServicePIDs() {
+        _ = syscall.Kill(pid, syscall.SIGTERM)
+    }
     m.childCmd = nil
+    m.childPGID = 0
+    m.showLogs = false
 }
