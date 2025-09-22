@@ -39,7 +39,7 @@ class Args:
     normalize: bool
     device: str
     watch: bool
-    checkpoint: str | None = None
+    checkpoint: str = "$PA_LAMBDA_CHECKPOINT"
     debug: bool = False
     empty_queues_requested: str | None = None
     queues_last_emptied_at: str | None = None
@@ -177,10 +177,7 @@ class Args:
         config_json_path = Args.get_config_json_path(config_dir=config_dir, args=args)
         stats_json_path = Args.get_stats_json_path(config_dir=config_dir, args=args)
         config_args = Args.read(config_dir=config_dir)
-        checkpoint = (
-          args.checkpoint if args.checkpoint is not None else
-          config_args.checkpoint if config_args.checkpoint is not None
-          else "$PA_LAMBDA_CHECKPOINT")
+        checkpoint = args.checkpoint if args.checkpoint is not None else config_args.checkpoint
 
         observer = prev_args.observer if prev_args is not None else None
         watch = args.watch or config_args.watch
