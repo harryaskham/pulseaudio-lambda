@@ -34,6 +34,9 @@ type Config struct {
     Debug                 bool      `json:"debug"`
     EmptyQueuesRequested  string    `json:"empty_queues_requested,omitempty"`
     QueuesLastEmptiedAt   string    `json:"queues_last_emptied_at,omitempty"`
+
+    // not saved: whether Checkpoint came from env
+    checkpointFromEnv     bool      `json:"-"`
 }
 
 func defaultConfig() Config {
@@ -51,6 +54,7 @@ func defaultConfig() Config {
         Watch:                false,
         Debug:                false,
         EmptyQueuesRequested: "",
+        checkpointFromEnv:    cp != "",
     }
 }
 
@@ -111,10 +115,11 @@ func loadConfig() (Config, string, error) {
     if len(cfg.Muted) != 4 { cfg.Muted = []bool{false,false,false,false} }
     if len(cfg.Soloed) != 4 { cfg.Soloed = []bool{false,false,false,false} }
     if cfg.Device != "cpu" && cfg.Device != "cuda" { cfg.Device = "cpu" }
-    // If checkpoint unspecified, read from env
-    if cfg.Checkpoint == "" {
+    // If checkpoint unspecified or placeholder, read from env (display-only)
+    if cfg.Checkpoint == "" || cfg.Checkpoint == "$PA_LAMBDA_CHECKPOINT" {
         if v := os.Getenv("PA_LAMBDA_CHECKPOINT"); v != "" {
             cfg.Checkpoint = expandUser(v)
+            cfg.checkpointFromEnv = true
         }
     }
     return cfg, path, nil
@@ -124,7 +129,20 @@ func saveConfig(cfg Config) error {
     path, err := configPath()
     if err != nil { return err }
     if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { return err }
-    b, err := json.MarshalIndent(cfg, "", "    ")
+    // If checkpoint came from env and hasn't been overridden, persist empty string
+    ce := cfg
+    if ce.checkpointFromEnv {
+        if v := os.Getenv("PA_LAMBDA_CHECKPOINT"); v != "" {
+            if ce.Checkpoint == expandUser(v) {
+                // Persist as unspecified (empty) when env provides the value
+                ce.Checkpoint = ""
+            }
+        } else {
+            // Persist a literal placeholder when env is absent
+            ce.Checkpoint = "$PA_LAMBDA_CHECKPOINT"
+        }
+    }
+    b, err := json.MarshalIndent(ce, "", "    ")
     if err != nil { return err }
     return os.WriteFile(path, b, 0o644)
 }
@@ -223,6 +241,9 @@ type model struct {
     // startup
     autoStart bool
     serviceDebug bool
+
+    // env
+    envCheckpoint string
 }
 
 type rateSample struct {
@@ -235,6 +256,10 @@ type rateSample struct {
 func initialModel() model {
     cfg, _, _ := loadConfig()
     m := model{cfg: cfg}
+    // Track env checkpoint for display-only behavior
+    if v := os.Getenv("PA_LAMBDA_CHECKPOINT"); v != "" {
+        m.envCheckpoint = expandUser(v)
+    }
     for i := 0; i < 4; i++ {
         m.gain[i] = &slider{Label: []string{"Drums","Bass","Vocals","Other"}[i], Value: cfg.Gains[i], Min: 0, Max: 200, Step: 1, Unit: "%"}
     }
@@ -548,6 +573,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         m.chkpt, cmd = m.chkpt.Update(msg)
         if m.chkpt.Value() != old {
             m.cfg.Checkpoint = m.chkpt.Value()
+            // Mark as user-specified if different from env
+            if m.envCheckpoint != "" && m.cfg.Checkpoint != m.envCheckpoint {
+                m.cfg.checkpointFromEnv = false
+            }
             return m, m.scheduleSave()
         }
         return m, cmd

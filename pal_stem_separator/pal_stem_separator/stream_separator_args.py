@@ -180,7 +180,7 @@ class Args:
         checkpoint = (
           args.checkpoint if args.checkpoint is not None else
           config_args.checkpoint if config_args.checkpoint is not None
-          else os.environ.get('PA_LAMBDA_CHECKPOINT', None))
+          else "$PA_LAMBDA_CHECKPOINT")
 
         observer = prev_args.observer if prev_args is not None else None
         watch = args.watch or config_args.watch

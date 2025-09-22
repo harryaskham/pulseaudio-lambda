@@ -124,9 +124,9 @@ def audio_inference_thread(input_queue, output_queue, stats_queue, sample_spec):
             loaded_device = args.device
             move_model = True
 
-        if args.checkpoint != loaded_checkpoint:
+        if expand_path(args.checkpoint) != loaded_checkpoint:
             model = reload_model(args)
-            loaded_checkpoint = args.checkpoint
+            loaded_checkpoint = expand_path(args.checkpoint)
             move_model = True
 
         if move_model:
