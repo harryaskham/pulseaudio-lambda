@@ -37,8 +37,10 @@ type Config struct {
 }
 
 func defaultConfig() Config {
+    cp := os.Getenv("PA_LAMBDA_CHECKPOINT")
+    if cp != "" { cp = expandUser(cp) }
     return Config{
-        Checkpoint:           "",
+        Checkpoint:           cp,
         ChunkSecs:            2.0,
         OverlapSecs:          0.5,
         Gains:                []float64{100, 100, 100, 100},
@@ -109,6 +111,12 @@ func loadConfig() (Config, string, error) {
     if len(cfg.Muted) != 4 { cfg.Muted = []bool{false,false,false,false} }
     if len(cfg.Soloed) != 4 { cfg.Soloed = []bool{false,false,false,false} }
     if cfg.Device != "cpu" && cfg.Device != "cuda" { cfg.Device = "cpu" }
+    // If checkpoint unspecified, read from env
+    if cfg.Checkpoint == "" {
+        if v := os.Getenv("PA_LAMBDA_CHECKPOINT"); v != "" {
+            cfg.Checkpoint = expandUser(v)
+        }
+    }
     return cfg, path, nil
 }
 

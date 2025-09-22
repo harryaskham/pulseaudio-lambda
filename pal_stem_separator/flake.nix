@@ -25,6 +25,7 @@
     pal-stem-separator-tui-flake = {
       url = "path:./tui";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pal-stem-separator.follows = "";
     };
   };
 

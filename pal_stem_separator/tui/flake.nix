@@ -4,6 +4,11 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    pal-stem-separator = {
+      url = "path:..";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pal-stem-separator-tui-flake.follows = "";
+    };
   };
 
   outputs =
@@ -11,6 +16,7 @@
       self,
       nixpkgs,
       flake-utils,
+      pal-stem-separator,
       ...
     }:
     flake-utils.lib.eachDefaultSystem (system:
@@ -33,6 +39,7 @@
             version = "0.1.0";
             src = ./.;
             subPackages = [ "." ];
+            buildInputs = [ pkgs.makeWrapper ];
             postPatch = ''
               rm -rf vendor || true
             '';
@@ -45,6 +52,10 @@
                   mv "$f" "$out/bin/pal-stem-separator-tui"
                 done
               fi
+            '';
+            postFixup = ''
+              wrapProgram $out/bin/pal-stem-separator-tui \
+                --set PA_LAMBDA_CHECKPOINT ${pal-stem-separator.packages.${system}.pal-stem-separator-checkpoint}/share/checkpoints/over30s.50.ckpt
             '';
           };
         };
