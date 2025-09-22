@@ -226,17 +226,23 @@
               ];
             };
 
-            pal-stem-separator = pkgs.runCommand "pal-stem-separator" {
-              propagatedBuildInputs = deps ++ (with pkgs; [
-                makeWrapper
-                app
-              ]);
+            pal-stem-separator-checkpoint = pkgs.stdenv.mkDerivation {
+              name = "pal-stem-separator-checkpoint";
+              src = ./.;
+              version = "0.0.1";
               installPhase = ''
                 mkdir -p $out/share/checkpoints
                 cp blessed/over30s.50.ckpt $out/share/checkpoints/
               '';
-            } ''
+            };
 
+            pal-stem-separator = pkgs.runCommand "pal-stem-separator" {
+              propagatedBuildInputs = deps ++ (with pkgs; [
+                makeWrapper
+                app
+                pal-stem-separator-checkpoint
+              ]);
+            } ''
               mkdir -p $out/bin
               
               # Create a wrapper script that preloads portaudio
@@ -258,7 +264,7 @@
               export PYTHONPATH="${pkgs.python312Packages.pygobject3}/lib/python3.12/site-packages''${PYTHONPATH:+:$PYTHONPATH}"
 
               # Set the default checkpoint path
-              export PA_LAMBDA_CHECKPOINT=$out/share/checkpoints/over30s.50.ckpt
+              export PA_LAMBDA_CHECKPOINT=${pal-stem-separator-checkpoint}/share/checkpoints/over30s.50.ckpt
               exec ${app}/bin/pal-stem-separator "$@"
               EOF
               
