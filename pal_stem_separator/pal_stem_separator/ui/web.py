@@ -18,6 +18,8 @@ import time
 import webbrowser
 
 from pal_stem_separator.stream_separator_args import Args
+import subprocess
+import signal
 
 
 def _serialize_args(args: Args) -> dict:
@@ -87,6 +89,119 @@ async def get_stats(request: Request):
         data = {}
     return JSONResponse(data)
 
+# --- Service control and logs ---
+
+def _service_cmdlines_match(cmdline: bytes) -> bool:
+    try:
+        parts = [p for p in cmdline.split(b"\x00") if p]
+        for p in parts:
+            s = p.decode(errors="ignore")
+            base = os.path.basename(s)
+            if base == "pal-stem-separator" or s.endswith("/pal-stem-separator"):
+                return True
+            if s == "stem-separator" or s == "stem-separator --debug":
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _find_service_pids() -> list[int]:
+    pids: list[int] = []
+    try:
+        for e in os.scandir("/proc"):
+            if not e.is_dir() or not e.name.isdigit():
+                continue
+            try:
+                with open(os.path.join("/proc", e.name, "cmdline"), "rb") as f:
+                    if _service_cmdlines_match(f.read()):
+                        pids.append(int(e.name))
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return pids
+
+
+def _service_running() -> bool:
+    if _find_service_pids():
+        return True
+    try:
+        subprocess.run(["pgrep", "-f", "pal-stem-separator$"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:
+        return False
+
+
+def _start_service():
+    try:
+        subprocess.Popen(["pulseaudio-lambda", "pal-stem-separator"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except Exception:
+        return False
+
+
+def _stop_service():
+    sent = False
+    for pid in _find_service_pids():
+        try:
+            os.kill(pid, signal.SIGTERM)
+            sent = True
+        except Exception:
+            pass
+    try:
+        subprocess.Popen(["pkill", "-f", "pal-stem-separator$"])  # nosec
+        sent = True
+    except Exception:
+        pass
+    return sent
+
+
+async def service_status(request: Request):
+    return JSONResponse({"running": _service_running()})
+
+
+async def service_action(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    action = (payload.get("action") or "").lower()
+    if action == "start":
+        ok = _start_service()
+        return JSONResponse({"ok": ok, "running": _service_running()})
+    if action == "stop":
+        ok = _stop_service()
+        return JSONResponse({"ok": ok, "running": _service_running()})
+    return JSONResponse({"error": "unknown action"}, status_code=400)
+
+
+async def get_logs(request: Request):
+    args = Args.get_live() if hasattr(Args, 'get_live') else Args.read()
+    config_dir = Args.get_config_dir(args)
+    log_path = os.path.join(config_dir, "stream_separator.log")
+    try:
+        q = request.query_params
+        offset = int(q.get("offset", "0"))
+    except Exception:
+        offset = 0
+    data = ""
+    new_offset = offset
+    try:
+        with open(log_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            end = f.tell()
+            if offset < 0 or offset > end:
+                offset = max(0, end - 8192)
+            f.seek(offset)
+            chunk = f.read()
+            data = chunk.decode(errors="ignore")
+            new_offset = offset + len(chunk)
+    except FileNotFoundError:
+        data = ""
+        new_offset = 0
+    return JSONResponse({"data": data, "offset": new_offset})
+
 
 HTML = """
 <!doctype html>
@@ -112,12 +227,14 @@ HTML = """
     .muted { background: #ef4444; color: white; border-color: #ef4444; }
     .solo { background: #f59e0b; color: white; border-color: #f59e0b; }
     @media (min-width: 640px) { .stems { grid-template-columns: 1fr 1fr; } }
+    .logs { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background: #111827; color: #e5e7eb; border-radius: 6px; padding: 8px; height: 180px; overflow: auto; }
   </style>
   <script>
     let config = null;
     let saveTimer = null;
     let prevStats = null;
     let prevStatsAt = 0;
+    let statsHist = []; // { t, in, out, proc }
 
     async function loadConfig() {
       const r = await fetch('/api/config');
@@ -174,7 +291,31 @@ HTML = """
       document.getElementById('checkpoint').value = config.checkpoint || '';
     }
 
-    window.addEventListener('DOMContentLoaded', loadConfig);
+    // --- Service ---
+    async function refreshService() {
+      try {
+        const r = await fetch('/api/service/status');
+        const s = await r.json();
+        const svc = document.getElementById('svc_state');
+        const btn = document.getElementById('svc_btn');
+        if (s.running) { svc.textContent='Running'; svc.style.color='#22c55e'; btn.textContent='Stop'; btn.onclick=stopService; }
+        else { svc.textContent='Stopped'; svc.style.color='#ef4444'; btn.textContent='Start'; btn.onclick=startService; }
+      } catch {}
+    }
+    async function startService() { await fetch('/api/service', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'start'})}); refreshService(); showLogs(); }
+    async function stopService() { await fetch('/api/service', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'stop'})}); refreshService(); }
+
+    // --- Logs ---
+    let logOffset = 0;
+    let logsTimer = null;
+    let followTail = true;
+    function toggleLogs() { const wrap = document.getElementById('logs_wrap'); const btn = document.getElementById('logs_btn'); if (wrap.style.display==='none') { showLogs(); } else { hideLogs(); } }
+    function showLogs() { const wrap = document.getElementById('logs_wrap'); wrap.style.display='block'; document.getElementById('logs_btn').textContent='Hide Logs'; followTail=true; if (!logsTimer) { pollLogs(); logsTimer=setInterval(pollLogs, 1000); } }
+    function hideLogs() { const wrap = document.getElementById('logs_wrap'); wrap.style.display='none'; document.getElementById('logs_btn').textContent='Show Logs'; if (logsTimer) { clearInterval(logsTimer); logsTimer=null; } }
+    async function pollLogs() { try { const r = await fetch(`/api/logs?offset=${logOffset}`); const data = await r.json(); const el = document.getElementById('logs'); const atBottom=(el.scrollTop+el.clientHeight)>=(el.scrollHeight-2); if (data.data && data.data.length) { el.textContent += data.data; } logOffset = data.offset||logOffset; if (followTail && (atBottom || el.textContent.length===0)) { el.scrollTop=el.scrollHeight; } } catch {} }
+    function onLogsScroll() { const el = document.getElementById('logs'); const atBottom=(el.scrollTop+el.clientHeight)>=(el.scrollHeight-2); followTail = atBottom; }
+
+    window.addEventListener('DOMContentLoaded', () => { loadConfig(); refreshService(); });
 
     // --- Stats ---
     function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
@@ -199,39 +340,60 @@ HTML = """
         const r = await fetch('/api/stats');
         const stats = await r.json();
         const now = Date.now() / 1000;
-        if (prevStats && prevStatsAt) {
-          const dt = Math.max(0.001, now - prevStatsAt);
-          const inBps = Math.max(0, (stats.input_bytes - prevStats.input_bytes) / dt);
-          const outBps = Math.max(0, (stats.output_bytes - prevStats.output_bytes) / dt);
-          const rtf = Math.max(0, (stats.processed_secs - prevStats.processed_secs) / dt);
-          // Update DOM
-          document.getElementById('in_rate').textContent = fmtRate(inBps);
-          document.getElementById('out_rate').textContent = fmtRate(outBps);
-          // Latency bar
-          const lat = stats.latency_secs || 0;
-          const latRatio = clamp(lat / 45.0, 0, 1);
-          const latEl = document.getElementById('latency_bar_fill');
-          latEl.style.width = `${Math.round(latRatio*100)}%`;
-          latEl.style.background = lat >= 45.0 ? '#ef4444' : (lat >= 40.0 ? '#f59e0b' : '#22c55e');
-          document.getElementById('latency_label').textContent = fmtLatency(lat);
-          // RTF label
-          document.getElementById('rtf_label').textContent = fmtRTF(rtf);
-          // Chunk marker position
-          const cm = document.getElementById('chunk_marker');
-          if (cm && config && typeof config.chunk_secs === 'number') {
-            const cr = clamp(config.chunk_secs / 45.0, 0, 1);
-            cm.style.left = `${Math.round(cr*100)}%`;
-            cm.style.display = 'block';
+        // Update history (30s window)
+        statsHist.push({ t: now, in: stats.input_bytes||0, out: stats.output_bytes||0, proc: stats.processed_secs||0 });
+        // prune
+        const cutoff = now - 30.0;
+        while (statsHist.length && statsHist[0].t < cutoff) statsHist.shift();
+
+        let inBps = 0, outBps = 0, rtf = 0;
+        if (statsHist.length >= 2) {
+          const last = statsHist[statsHist.length-1];
+          let j = 0;
+          while (j < statsHist.length-1) {
+            if ((last.in - statsHist[j].in) > 0 || (last.out - statsHist[j].out) > 0) break;
+            j++;
           }
-          // Raw totals
-          const raw = document.getElementById('raw_totals');
-          if (raw) {
-            raw.innerHTML = `
-              <div>Input: ${fmtBytes(stats.input_bytes)} &nbsp; ${(stats.input_samples||0).toLocaleString()} samples &nbsp; ${(stats.input_secs||0).toFixed(2)} s</div>
-              <div>Processed: ${fmtBytes(stats.processed_bytes)} &nbsp; ${(stats.processed_samples||0).toLocaleString()} samples &nbsp; ${(stats.processed_secs||0).toFixed(2)} s</div>
-              <div>Output: ${fmtBytes(stats.output_bytes)} &nbsp; ${(stats.output_samples||0).toLocaleString()} samples &nbsp; ${(stats.output_secs||0).toFixed(2)} s</div>
-            `;
-          }
+          if (j >= statsHist.length-1) j = statsHist.length-2;
+          const first = statsHist[j];
+          const dt = Math.max(0.001, last.t - first.t);
+          inBps = Math.max(0, (last.in - first.in) / dt);
+          outBps = Math.max(0, (last.out - first.out) / dt);
+          rtf = Math.max(0, (last.proc - first.proc) / dt);
+        }
+
+        // Update DOM
+        document.getElementById('in_rate').textContent = fmtRate(inBps);
+        document.getElementById('out_rate').textContent = fmtRate(outBps);
+
+        // Latency bar with chunk-relative threshold
+        const lat = stats.latency_secs || 0;
+        const latRatio = clamp(lat / 45.0, 0, 1);
+        const latEl = document.getElementById('latency_bar_fill');
+        latEl.style.width = `${Math.round(latRatio*100)}%`;
+        const chunk = (config && typeof config.chunk_secs === 'number') ? config.chunk_secs : 2.0;
+        latEl.style.background = (lat < 1.2*chunk) ? '#22c55e' : (lat >= 45.0 ? '#ef4444' : '#f59e0b');
+        document.getElementById('latency_label').textContent = fmtLatency(lat);
+
+        // RTF label
+        document.getElementById('rtf_label').textContent = fmtRTF(rtf);
+
+        // Chunk marker position
+        const cm = document.getElementById('chunk_marker');
+        if (cm && config && typeof config.chunk_secs === 'number') {
+          const cr = clamp(config.chunk_secs / 45.0, 0, 1);
+          cm.style.left = `${Math.round(cr*100)}%`;
+          cm.style.display = 'block';
+        }
+
+        // Raw totals
+        const raw = document.getElementById('raw_totals');
+        if (raw) {
+          raw.innerHTML = `
+            <div>Input: ${fmtBytes(stats.input_bytes)} &nbsp; ${(stats.input_samples||0).toLocaleString()} samples &nbsp; ${(stats.input_secs||0).toFixed(2)} s</div>
+            <div>Processed: ${fmtBytes(stats.processed_bytes)} &nbsp; ${(stats.processed_samples||0).toLocaleString()} samples &nbsp; ${(stats.processed_secs||0).toFixed(2)} s</div>
+            <div>Output: ${fmtBytes(stats.output_bytes)} &nbsp; ${(stats.output_samples||0).toLocaleString()} samples &nbsp; ${(stats.output_secs||0).toFixed(2)} s</div>
+          `;
         }
         prevStats = stats;
         prevStatsAt = now;
@@ -246,6 +408,14 @@ HTML = """
     <div class="container">
       <h1>pa&lambda;-stem-separator</h1>
       <div id="status" class="status"></div>
+
+      <div class="section">
+        <h2>Service</h2>
+        <div class="row"><label>Status</label><div><span id="svc_state">-</span> &nbsp; <button id="svc_btn" class="primary" onclick="startService()">Start</button> &nbsp; <button id="logs_btn" onclick="toggleLogs()">Show Logs</button></div></div>
+        <div id="logs_wrap" style="display:none;">
+          <div id="logs" class="logs" onscroll="onLogsScroll()"></div>
+        </div>
+      </div>
 
       <div class="section">
         <h2>Live Stats</h2>
@@ -325,6 +495,9 @@ def make_app() -> Starlette:
         Route("/api/config", get_config),
         Route("/api/update", update_config, methods=["POST"]),
         Route("/api/stats", get_stats),
+        Route("/api/service/status", service_status),
+        Route("/api/service", service_action, methods=["POST"]),
+        Route("/api/logs", get_logs),
     ])
 
 

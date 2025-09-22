@@ -31,7 +31,6 @@ class ArgsWatcher(FileSystemEventHandler):
 
 @dataclasses.dataclass
 class Args:
-    checkpoint: str
     chunk_secs: float
     overlap_secs: float
     gains: List[float]
@@ -40,6 +39,7 @@ class Args:
     normalize: bool
     device: str
     watch: bool
+    checkpoint: str | None = None
     debug: bool = False
     empty_queues_requested: str | None = None
     queues_last_emptied_at: str | None = None
@@ -131,7 +131,7 @@ class Args:
 
         # Checkpoint
         parser.add_argument('--checkpoint', type=str,
-                            help='Path to model checkpoint')
+                            help='Path to model checkpoint. If unset, will use the environment variable $PA_LAMBDA_CHECKPOINT')
 
         # Chunk size in seconds
         parser.add_argument('--chunk-secs', type=float,
@@ -159,19 +159,28 @@ class Args:
 
         args = parser.parse_args()
 
-        # Set up logging to stderr (stdout is for audio)
+        # Set up logging to file + stderr (stdout is for audio)
+        log_format = '%(asctime)s - %(levelname)s - %(message)s'
+        log_level = logging.DEBUG if args.debug else logging.INFO
         logging.basicConfig(
-            level=logging.DEBUG if args.debug else logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            stream=sys.stderr
-        )
+            level=log_level,
+            format=log_format,
+            stream=sys.stderr)
+
+        config_dir = Args.get_config_dir(args)
+
+        log_path = os.path.join(config_dir, "stream_separator.log")
+        logging.getLogger().addHandler(logging.FileHandler(log_path))
 
         logging.debug(f"CLI args: {args}")
 
-        config_dir = Args.get_config_dir(args)
         config_json_path = Args.get_config_json_path(config_dir=config_dir, args=args)
         stats_json_path = Args.get_stats_json_path(config_dir=config_dir, args=args)
         config_args = Args.read(config_dir=config_dir)
+        checkpoint = (
+          args.checkpoint if args.checkpoint is not None else
+          config_args.checkpoint if config_args.checkpoint is not None
+          else os.environ.get('PA_LAMBDA_CHECKPOINT', None))
 
         observer = prev_args.observer if prev_args is not None else None
         watch = args.watch or config_args.watch
@@ -189,6 +198,7 @@ class Args:
             prev_args.observer.stop()
             observer = None
 
+
         combined = cls(
             gains=(
                 [ 0.0 if x.strip() == "m" else float(x.strip())
@@ -203,11 +213,11 @@ class Args:
                 [ x.strip() == "s" for x in args.gains.split(",") ]
                 if args.gains is not None
                 else config_args.soloed),
-            checkpoint=args.checkpoint if args.checkpoint is not None else config_args.checkpoint,
             chunk_secs=args.chunk_secs if args.chunk_secs is not None else config_args.chunk_secs,
             overlap_secs=args.overlap_secs if args.overlap_secs is not None else config_args.overlap_secs,
             device=args.device if args.device is not None else config_args.device,
             normalize=args.normalize or config_args.normalize,
+            checkpoint=checkpoint,
             debug=debug,
             config_dir=config_dir,
             config_path=config_json_path,

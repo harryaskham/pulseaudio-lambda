@@ -231,7 +231,12 @@
                 makeWrapper
                 app
               ]);
+              installPhase = ''
+                mkdir -p $out/share/checkpoints
+                cp blessed/over30s.50.ckpt $out/share/checkpoints/
+              '';
             } ''
+
               mkdir -p $out/bin
               
               # Create a wrapper script that preloads portaudio
@@ -251,7 +256,9 @@
 
               # Ensure gi (PyGObject) is visible to the venv
               export PYTHONPATH="${pkgs.python312Packages.pygobject3}/lib/python3.12/site-packages''${PYTHONPATH:+:$PYTHONPATH}"
-              
+
+              # Set the default checkpoint path
+              export PA_LAMBDA_CHECKPOINT=$out/share/checkpoints/over30s.50.ckpt
               exec ${app}/bin/pal-stem-separator "$@"
               EOF
               

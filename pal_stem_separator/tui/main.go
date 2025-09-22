@@ -258,18 +258,21 @@ var (
     nord9 = lipgloss.Color("#81A1C1")
     nord10 = lipgloss.Color("#5E81AC")
     nord11 = lipgloss.Color("#BF616A")
+    nord12 = lipgloss.Color("#D08770")
     nord13 = lipgloss.Color("#EBCB8B")
     nord14 = lipgloss.Color("#A3BE8C")
+    nord15 = lipgloss.Color("#B48EAD")
 
-    titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(nord8)
-    sectionStyle = lipgloss.NewStyle().MarginTop(1).Foreground(nord9)
+    // Aurora-forward styling
+    titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(nord15)
+    sectionStyle = lipgloss.NewStyle().MarginTop(1).Foreground(nord12)
     focusStyle   = lipgloss.NewStyle().Foreground(nord13)
-    btnStyle     = lipgloss.NewStyle().Padding(0,1).Foreground(nord4).Background(nord2)
-    btnOnStyle   = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord10)
+    btnStyle     = lipgloss.NewStyle().Padding(0,1).Foreground(nord4).Background(nord3)
+    btnOnStyle   = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord14)
     warnStyle    = lipgloss.NewStyle().Padding(0,1).Foreground(nord0).Background(nord11)
-    panelStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(nord3).Padding(0, 1).Margin(0, 0, 1, 0)
+    panelStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(nord10).Padding(0, 1).Margin(0, 0, 1, 0)
     btnFocusStyle= lipgloss.NewStyle().Padding(0,1).Bold(true).Underline(true).Foreground(nord4).Background(nord3)
-    focusWrap    = lipgloss.NewStyle().Background(nord1)
+    focusWrap    = lipgloss.NewStyle().Background(nord2)
 )
 
 func (m *model) Init() tea.Cmd {
@@ -466,6 +469,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         }
     case tea.WindowSizeMsg:
         m.width = msg.Width; m.height = msg.Height
+        // Resize checkpoint input to fill panel width similarly to others
+        w := max(40, m.width-8)
+        if w > 10 { m.chkpt.Width = w-4 }
     case msgSave:
         m.pendingSave = false
         _ = saveConfig(m.cfg)
@@ -476,14 +482,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         s := loadStats()
         // Update moving window history (30s) and compute moving-average rates
         m.hist = append(m.hist, rateSample{t: now, in: s.InputBytes, out: s.OutputBytes, proc: s.ProcessedSecs})
-        // prune
+        // prune to last 30s
         cutoff := now.Add(-30 * time.Second)
         i := 0
         for i < len(m.hist) && m.hist[i].t.Before(cutoff) { i++ }
         if i > 0 && i < len(m.hist) { m.hist = append([]rateSample{}, m.hist[i:]...) } else if i >= len(m.hist) { m.hist = nil }
         if len(m.hist) >= 2 {
-            first := m.hist[0]
+            // Choose earliest sample with some data movement to avoid averaging idle period before flow started
             last := m.hist[len(m.hist)-1]
+            j := 0
+            for j < len(m.hist)-1 {
+                if (last.in-m.hist[j].in) > 0 || (last.out-m.hist[j].out) > 0 {
+                    break
+                }
+                j++
+            }
+            if j >= len(m.hist)-1 { j = len(m.hist)-2 }
+            first := m.hist[j]
             dt := last.t.Sub(first.t).Seconds()
             if dt > 0.001 {
                 m.inBps = maxf((last.in-first.in)/dt, 0)
@@ -663,7 +678,7 @@ func (m model) View() string {
     latency := m.stats.LatencySecs
     fmt.Fprintln(sb, "  Latency:")
     barW := max(10, w-10)
-    fmt.Fprintln(sb, "   "+renderBarWithMarker(latency/45.0, barW, latencyLabel(latency), latencyColor(latency), m.cfg.ChunkSecs/45.0))
+    fmt.Fprintln(sb, "   "+renderBarWithMarker(latency/45.0, barW, latencyLabel(latency), latencyColorThreshold(latency, m.cfg.ChunkSecs), m.cfg.ChunkSecs/45.0))
     // Throughput and speed
     fmt.Fprintf(sb, "  %s    %s    RTF: %.2fx\n", formatRate("In", m.inBps), formatRate("Out", m.outBps), m.rtf)
     // Raw totals
@@ -691,7 +706,8 @@ func (m model) View() string {
         // We will add a broad hit area near the end of the panel line
         // The precise position is estimated further below after printing panel
     }
-    livePanel := panelStyle.Render(sb.String())
+    pStyle := panelStyle.Copy().Width(w+4)
+    livePanel := pStyle.Render(sb.String())
     fmt.Fprintln(b, livePanel)
     // advance Y by panel height (content lines + 2 borders + 1 margin)
     liveLines := strings.Count(sb.String(), "\n") + 1
@@ -748,7 +764,7 @@ func (m model) View() string {
     fmt.Fprintln(sb, "  "+reset)
     // hit area for reset button (full line)
     m.hits = append(m.hits, hitArea{ x1: baseX, y1: baseY + lineOfs, x2: baseX + w, y2: baseY + lineOfs, kind: hitBtnReset })
-    fmt.Fprintln(b, panelStyle.Render(sb.String()))
+    fmt.Fprintln(b, pStyle.Render(sb.String()))
     volLines := lineOfs + 2 // + header and reset line
     curY += volLines + 2 + 1 // borders + margin
 
@@ -784,7 +800,7 @@ func (m model) View() string {
     empty := btnStyle.Render("Empty Queues"); if m.focused==18 { empty = btnFocusStyle.Render("Empty Queues") }
     fmt.Fprintln(sb, "  "+empty)
     y = baseY + lineOfs; m.hits = append(m.hits, hitArea{ x1: baseX, y1: y, x2: baseX + w, y2: y, kind: hitBtnEmpty })
-    fmt.Fprintln(b, panelStyle.Render(sb.String()))
+    fmt.Fprintln(b, pStyle.Render(sb.String()))
     procLines := lineOfs + 1 // + header assumed already counted in lineOfs start
     curY += procLines + 2 + 1
 
@@ -793,7 +809,7 @@ func (m model) View() string {
     fmt.Fprintln(sb, sectionStyle.Render("Model Checkpoint"))
     ti := m.chkpt.View(); if m.focused==19 { ti = focusWrap.Render(ti) }
     fmt.Fprintln(sb, "  "+ti)
-    fmt.Fprintln(b, panelStyle.Render(sb.String()))
+    fmt.Fprintln(b, pStyle.Render(sb.String()))
     // checkpoint hit (focus)
     baseY = curY + 1; baseX = 2
     m.hits = append(m.hits, hitArea{ x1: baseX, y1: baseY + 1, x2: baseX + w, y2: baseY + 1, kind: hitTextCheckpoint })
@@ -881,10 +897,14 @@ func renderBarWithMarker(ratio float64, width int, label string, color lipgloss.
 }
 
 func latencyLabel(s float64) string { return fmt.Sprintf("%.2f s", s) }
-func latencyColor(s float64) lipgloss.Color {
-    if s >= 45.0 { return nord11 } // red at/exceed max window
-    if s >= 40.0 { return nord13 } // amber when approaching end
-    return nord14                 // green
+func latencyColorThreshold(s float64, chunk float64) lipgloss.Color {
+    if s < 1.2*chunk {
+        return nord14 // green when within 120% of chunk size
+    }
+    if s >= 45.0 {
+        return nord11 // red at/exceed max window
+    }
+    return nord13 // amber when above 120% chunk but below hard max
 }
 func maxf(a, b float64) float64 { if a>b {return a}; return b }
 func clampf(v, lo, hi float64) float64 { if v<lo {return lo}; if v>hi {return hi}; return v }
