@@ -5,7 +5,8 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     pal-stem-separator = {
-      url = "path:..";
+      #url = "path:./..";
+      url = "github:harryaskham/pulseaudio-lambda?dir=pal_stem_separator&lfs=1";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.pal-stem-separator-tui-flake.follows = "";
     };

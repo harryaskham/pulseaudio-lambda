@@ -23,7 +23,8 @@
     };
 
     pal-stem-separator-tui-flake = {
-      url = "path:./tui";
+      #url = "path:./tui";
+      url = "github:harryaskham/pulseaudio-lambda?dir=pal_stem_separator/tui&lfs=1";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.pal-stem-separator.follows = "";
     };

@@ -84,31 +84,46 @@
         "uv2nix": "uv2nix"
       },
       "locked": {
-        "path": "./pal_stem_separator",
-        "type": "path"
+        "dir": "pal_stem_separator",
+        "lastModified": 1758577326,
+        "narHash": "sha256-LSaY7xVt83cJtUnU4zQ98hvcLT9KkA7bLcmbz66rmgc=",
+        "owner": "harryaskham",
+        "repo": "pulseaudio-lambda",
+        "rev": "3b30f99a8a11ee0e3e6f2f41e771f0d59de2107f",
+        "type": "github"
       },
       "original": {
-        "path": "./pal_stem_separator",
-        "type": "path"
-      },
-      "parent": []
+        "dir": "pal_stem_separator",
+        "owner": "harryaskham",
+        "repo": "pulseaudio-lambda",
+        "type": "github"
+      }
     },
     "pal-stem-separator-tui-flake": {
       "inputs": {
         "flake-utils": "flake-utils_3",
         "nixpkgs": [
           "nixpkgs"
+        ],
+        "pal-stem-separator": [
+          "pal-stem-separator"
         ]
       },
       "locked": {
-        "path": "./pal_stem_separator/tui",
-        "type": "path"
+        "dir": "pal_stem_separator/tui",
+        "lastModified": 1758577326,
+        "narHash": "sha256-LSaY7xVt83cJtUnU4zQ98hvcLT9KkA7bLcmbz66rmgc=",
+        "owner": "harryaskham",
+        "repo": "pulseaudio-lambda",
+        "rev": "3b30f99a8a11ee0e3e6f2f41e771f0d59de2107f",
+        "type": "github"
       },
       "original": {
-        "path": "./pal_stem_separator/tui",
-        "type": "path"
-      },
-      "parent": []
+        "dir": "pal_stem_separator/tui",
+        "owner": "harryaskham",
+        "repo": "pulseaudio-lambda",
+        "type": "github"
+      }
     },
     "pyproject-build-systems": {
       "inputs": {

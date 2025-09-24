@@ -5,12 +5,14 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     pal-stem-separator = {
-      url = "path:./pal_stem_separator";
+      #url = "path:./pal_stem_separator";
+      url = "github:harryaskham/pulseaudio-lambda?dir=pal_stem_separator&lfs=1";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.pal-stem-separator-tui-flake.follows = "pal-stem-separator-tui-flake";
     };
     pal-stem-separator-tui-flake = {
-      url = "path:./pal_stem_separator/tui";
+      #url = "path:./pal_stem_separator/tui";
+      url = "github:harryaskham/pulseaudio-lambda?dir=pal_stem_separator/tui&lfs=1";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.pal-stem-separator.follows = "pal-stem-separator";
     };
