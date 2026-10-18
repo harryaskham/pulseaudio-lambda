@@ -1,0 +1,30 @@
+/* pulseaudio-lambda — a studio rack. Near-black panels, signal green for audio, cable orange for
+   the command in the middle; Rubik for headings, IBM Plex Sans for prose, JetBrains Mono for code. */
+
+:root {
+  --page-bg: #121417; --page-text: #dde3e8; --page-muted: #9aa4ae; --page-line: #262b31;
+  --page-accent: #5fe08a; --strong: #ffffff; --surface: #171b1f; --raise: #1f2429;
+  --code-bg: #0c0e10; --code-text: #e2e8ee;
+  --page-ui: "IBM Plex Sans", system-ui, sans-serif;
+  --display: "Rubik", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --cable: #ff8a3d;
+  --k-ink: #e2e8ee; --k-accent: var(--cable); --k-b: var(--page-accent); --k-muted: #7d8791; --k-file: #9aa4ae;
+}
+
+header.intro h1 { font-size: clamp(40px, 6.4vw, 78px); font-weight: 700; letter-spacing: -0.02em; }
+header.intro h1::first-letter { color: var(--page-accent); }
+h2 { font-weight: 650; }
+a { color: var(--page-accent); }
+:not(pre) > code { background: var(--raise); color: var(--strong); }
+pre { border: 1px solid var(--page-line); }
+pre .p { color: #ffd2b0; }
+pre .k { color: var(--cable); }
+.fig { padding: 16px 12px; background: var(--surface); border: 1px solid var(--page-line); border-radius: 8px; }
+.dg .lab-bg { fill: var(--surface); }
+.dg .halo { stroke: var(--surface); }
+table.env th { width: 58%; }
+table.env th code { background: none; padding: 0; color: var(--page-accent); }
+table.lat td.num, table.lat th.num { text-align: right; font-family: var(--mono); padding-right: 16px; white-space: nowrap; }
+table.lat td.runs { font: 13px/1.5 var(--mono); color: var(--page-muted); }
+td code { white-space: nowrap; }
