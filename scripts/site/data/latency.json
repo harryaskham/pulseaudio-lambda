@@ -1,0 +1,29 @@
+[
+ {
+  "lambda": "cat",
+  "runs_ms": [
+   44.3,
+   50.0,
+   63.6
+  ],
+  "median_ms": 50.0
+ },
+ {
+  "lambda": "lambdas/pal-delay 0.5",
+  "runs_ms": [
+   363.3,
+   363.2,
+   355.7
+  ],
+  "median_ms": 363.2
+ },
+ {
+  "lambda": "lambdas/pal-delay 1",
+  "runs_ms": [
+   845.1,
+   839.3,
+   845.0
+  ],
+  "median_ms": 845.0
+ }
+]
